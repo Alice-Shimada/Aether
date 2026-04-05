@@ -70,6 +70,7 @@ import { PermissionRoutes } from "./routes/permission"
 import { GlobalRoutes } from "./routes/global"
 import { KnowledgeRoutes } from "./routes/knowledge"
 import { WeChatRoutes } from "./routes/wechat"
+import { FeishuRoutes } from "./routes/feishu"
 import { ReadingModeRoutes } from "./routes/reading-mode"
 import { MDNS } from "./mdns"
 import { lazy } from "@/util/lazy"
@@ -290,6 +291,7 @@ export namespace Server {
       .route("/tui", TuiRoutes())
       .route("/knowledge", KnowledgeRoutes())
       .route("/wechat", WeChatRoutes())
+      .route("/feishu", FeishuRoutes())
       .route("/reading-mode", ReadingModeRoutes())
       .post(
         "/instance/dispose",

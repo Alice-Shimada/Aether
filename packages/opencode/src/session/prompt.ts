@@ -50,6 +50,7 @@ import { Truncate } from "@/tool/truncate"
 import { Knowledge } from "../knowledge"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
+import { Adaptation } from "@/adaptation"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -688,6 +689,25 @@ export namespace SessionPrompt {
         ...(skills ? [skills] : []),
         ...(await InstructionPrompt.system()),
       ]
+      const request = msgs
+        .find((item) => item.info.id === lastUser.id)
+        ?.parts.filter((part): part is MessageV2.TextPart => part.type === "text")
+        .filter((part) => !part.synthetic && !part.ignored)
+        .map((part) => part.text.trim())
+        .filter(Boolean)
+        .join("\n")
+      if (request) {
+        const packet = await Adaptation.compile({
+          session_id: sessionID,
+          request_id: lastUser.id,
+          request,
+          budget: {
+            max_sections: 8,
+            max_chars: 4000,
+          },
+        }).catch(() => undefined)
+        if (packet?.text) system.push(packet.text)
+      }
       const format = lastUser.format ?? { type: "text" }
       if (format.type === "json_schema") {
         system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
@@ -740,6 +760,12 @@ export namespace SessionPrompt {
         }
       }
 
+      if (result === "stop" && !processor.message.error) {
+        void Adaptation.extract({
+          session_id: sessionID,
+          mode: "after_response",
+        }).catch(() => undefined)
+      }
       if (result === "stop") break
       if (result === "compact") {
         await SessionCompaction.create({

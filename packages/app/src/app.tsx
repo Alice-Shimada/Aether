@@ -41,6 +41,8 @@ import { NotificationProvider } from "@/context/notification"
 import { PermissionProvider } from "@/context/permission"
 import { usePlatform } from "@/context/platform"
 import { PromptProvider } from "@/context/prompt"
+import { IpkProvider } from "@/context/ipk"
+import { AdaptationProvider } from "@/context/adaptation"
 import { ServerConnection, ServerProvider, serverName, useServer } from "@/context/server"
 import { SettingsProvider } from "@/context/settings"
 import { TerminalProvider } from "@/context/terminal"
@@ -106,7 +108,11 @@ function AppShellProviders(props: ParentProps) {
                 <CommandProvider>
                   <HighlightsProvider>
                     <KnowledgeProvider>
-                      <Layout>{props.children}</Layout>
+                      <IpkProvider>
+                        <AdaptationProvider>
+                          <Layout>{props.children}</Layout>
+                        </AdaptationProvider>
+                      </IpkProvider>
                     </KnowledgeProvider>
                   </HighlightsProvider>
                 </CommandProvider>

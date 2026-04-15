@@ -71,6 +71,10 @@ import { GlobalRoutes } from "./routes/global"
 import { KnowledgeRoutes } from "./routes/knowledge"
 import { WeChatRoutes } from "./routes/wechat"
 import { ReadingModeRoutes } from "./routes/reading-mode"
+import { IpkRoutes } from "./routes/ipk"
+import { AdaptationRoutes } from "./routes/adaptation"
+import { TaskScopeRoutes } from "./routes/task-scope"
+import { ArtifactRoutes } from "./routes/artifact"
 import { DatabaseRoutes } from "./routes/database"
 import { MDNS } from "./mdns"
 import { lazy } from "@/util/lazy"
@@ -296,6 +300,10 @@ export namespace Server {
       .route("/knowledge", KnowledgeRoutes())
       .route("/wechat", WeChatRoutes())
       .route("/reading-mode", ReadingModeRoutes())
+      .route("/ipk", IpkRoutes())
+      .route("/adaptation", AdaptationRoutes())
+      .route("/task-scope", TaskScopeRoutes())
+      .route("/artifact", ArtifactRoutes())
       .post(
         "/instance/dispose",
         describeRoute({

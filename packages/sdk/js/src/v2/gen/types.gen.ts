@@ -563,6 +563,29 @@ export type EventWechatError = {
   }
 }
 
+export type EventIpkDraftUpdated = {
+  type: "ipk.draft.updated"
+  properties: {
+    draft_id: string
+    state: string
+  }
+}
+
+export type EventIpkPieceCommitted = {
+  type: "ipk.piece.committed"
+  properties: {
+    piece_id: string
+    draft_id: string
+  }
+}
+
+export type EventIpkReindexed = {
+  type: "ipk.reindexed"
+  properties: {
+    at: string
+  }
+}
+
 export type OutputFormatText = {
   type: "text"
 }
@@ -1074,6 +1097,9 @@ export type Event =
   | EventWechatQrcode
   | EventWechatConnected
   | EventWechatError
+  | EventIpkDraftUpdated
+  | EventIpkPieceCommitted
+  | EventIpkReindexed
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -2267,6 +2293,24 @@ export type GlobalHealthResponses = {
 
 export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthResponses]
 
+export type GlobalWebUpdateCurrentData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/web-update/current"
+}
+
+export type GlobalWebUpdateCurrentResponses = {
+  /**
+   * Current local web version
+   */
+  200: {
+    currentVersion: string
+  }
+}
+
+export type GlobalWebUpdateCurrentResponse = GlobalWebUpdateCurrentResponses[keyof GlobalWebUpdateCurrentResponses]
+
 export type GlobalPingData = {
   body?: {
     id: string
@@ -2386,6 +2430,108 @@ export type GlobalDisposeResponses = {
 }
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
+
+export type GlobalWebUpdateCheckData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/web-update/check"
+}
+
+export type GlobalWebUpdateCheckErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalWebUpdateCheckError = GlobalWebUpdateCheckErrors[keyof GlobalWebUpdateCheckErrors]
+
+export type GlobalWebUpdateCheckResponses = {
+  /**
+   * Version check result
+   */
+  200: {
+    currentVersion: string
+    remoteVersion: string
+    updateAvailable: boolean
+    downloaded: boolean
+    checkError?: string
+  }
+}
+
+export type GlobalWebUpdateCheckResponse = GlobalWebUpdateCheckResponses[keyof GlobalWebUpdateCheckResponses]
+
+export type GlobalWebUpdateDownloadData = {
+  body?: {
+    os: "darwin" | "linux" | "windows"
+    version: string
+  }
+  path?: never
+  query?: never
+  url: "/global/web-update/download"
+}
+
+export type GlobalWebUpdateDownloadErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalWebUpdateDownloadError = GlobalWebUpdateDownloadErrors[keyof GlobalWebUpdateDownloadErrors]
+
+export type GlobalWebUpdateDownloadResponses = {
+  /**
+   * Download result
+   */
+  200:
+    | {
+        success: true
+        path: string
+      }
+    | {
+        success: false
+        error: string
+      }
+}
+
+export type GlobalWebUpdateDownloadResponse = GlobalWebUpdateDownloadResponses[keyof GlobalWebUpdateDownloadResponses]
+
+export type GlobalWebUpdateInstallData = {
+  body?: {
+    os: "darwin" | "linux" | "windows"
+    version?: string
+  }
+  path?: never
+  query?: never
+  url: "/global/web-update/install"
+}
+
+export type GlobalWebUpdateInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalWebUpdateInstallError = GlobalWebUpdateInstallErrors[keyof GlobalWebUpdateInstallErrors]
+
+export type GlobalWebUpdateInstallResponses = {
+  /**
+   * Install result
+   */
+  200:
+    | {
+        success: true
+      }
+    | {
+        success: false
+        error: string
+      }
+}
+
+export type GlobalWebUpdateInstallResponse = GlobalWebUpdateInstallResponses[keyof GlobalWebUpdateInstallResponses]
 
 export type GlobalUpgradeData = {
   body?: {
@@ -4688,6 +4834,146 @@ export type ProviderOauthCallbackResponses = {
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
 
+export type DatabaseLegacyStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/database/legacy/status"
+}
+
+export type DatabaseLegacyStatusResponses = {
+  /**
+   * Legacy database scan status
+   */
+  200: {
+    directory: string
+    target: string
+    has_legacy: boolean
+    message: string
+    dismissed: boolean
+    should_merge: boolean
+    source_count: number
+    legacy_count: number
+    files: Array<{
+      name: string
+      path: string
+      channel: string
+      mtime: number
+    }>
+    naming: {
+      [key: string]: number
+    }
+    versions: {
+      [key: string]: number
+    }
+  }
+}
+
+export type DatabaseLegacyStatusResponse = DatabaseLegacyStatusResponses[keyof DatabaseLegacyStatusResponses]
+
+export type DatabaseLegacyMergeStateData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/database/legacy/merge/state"
+}
+
+export type DatabaseLegacyMergeStateResponses = {
+  /**
+   * Merge state
+   */
+  200: {
+    state: "idle" | "running" | "done" | "error"
+    updated: number
+    error?: string
+    details?: Array<string>
+  }
+}
+
+export type DatabaseLegacyMergeStateResponse =
+  DatabaseLegacyMergeStateResponses[keyof DatabaseLegacyMergeStateResponses]
+
+export type DatabaseLegacyMergeStateResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/database/legacy/merge/state/reset"
+}
+
+export type DatabaseLegacyMergeStateResetResponses = {
+  /**
+   * Reset merge state
+   */
+  200: {
+    state: "idle" | "running" | "done" | "error"
+    updated: number
+    error?: string
+    details?: Array<string>
+  }
+}
+
+export type DatabaseLegacyMergeStateResetResponse =
+  DatabaseLegacyMergeStateResetResponses[keyof DatabaseLegacyMergeStateResetResponses]
+
+export type DatabaseLegacyMergeData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/database/legacy/merge"
+}
+
+export type DatabaseLegacyMergeResponses = {
+  /**
+   * Merge kickoff result
+   */
+  200: {
+    status: {
+      directory: string
+      target: string
+      has_legacy: boolean
+      message: string
+      dismissed: boolean
+      should_merge: boolean
+      source_count: number
+      legacy_count: number
+      files: Array<{
+        name: string
+        path: string
+        channel: string
+        mtime: number
+      }>
+      naming: {
+        [key: string]: number
+      }
+      versions: {
+        [key: string]: number
+      }
+    }
+    mode: "noop" | "copy" | "agent"
+    sessionID?: string
+    merge_state: {
+      state: "idle" | "running" | "done" | "error"
+      updated: number
+      error?: string
+      details?: Array<string>
+    }
+  }
+}
+
+export type DatabaseLegacyMergeResponse = DatabaseLegacyMergeResponses[keyof DatabaseLegacyMergeResponses]
+
 export type FileActiveTasksData = {
   body?: never
   path?: never
@@ -6768,6 +7054,28 @@ export type WechatStopResponses = {
 
 export type WechatStopResponse = WechatStopResponses[keyof WechatStopResponses]
 
+export type WechatPingData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/wechat/ping"
+}
+
+export type WechatPingResponses = {
+  /**
+   * Ping result
+   */
+  200: {
+    ok: boolean
+    stolen: boolean
+  }
+}
+
+export type WechatPingResponse = WechatPingResponses[keyof WechatPingResponses]
+
 export type WechatStatusData = {
   body?: never
   path?: never
@@ -6864,6 +7172,129 @@ export type ReadingModeSessionCreateResponses = {
 
 export type ReadingModeSessionCreateResponse =
   ReadingModeSessionCreateResponses[keyof ReadingModeSessionCreateResponses]
+
+export type ReadingModeSessionFromFileData = {
+  body?: {
+    path: string
+    settings?: {
+      translatePrompt?: string
+      questionPrompt?: string
+      firstReadPrompt?: string
+      contextPageRange?: 0 | 1 | 2
+      autoFirstRead?: boolean
+    }
+    forceNew?: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/reading-mode/session/from-file"
+}
+
+export type ReadingModeSessionFromFileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ReadingModeSessionFromFileError = ReadingModeSessionFromFileErrors[keyof ReadingModeSessionFromFileErrors]
+
+export type ReadingModeSessionFromFileResponses = {
+  /**
+   * Existing or newly created reading mode session
+   */
+  200: {
+    action: "existing" | "created"
+    session: Session
+  }
+}
+
+export type ReadingModeSessionFromFileResponse =
+  ReadingModeSessionFromFileResponses[keyof ReadingModeSessionFromFileResponses]
+
+export type ReadingModePageTextData = {
+  body?: {
+    sessionID: string
+    startPage: number
+    endPage: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/reading-mode/page-text"
+}
+
+export type ReadingModePageTextErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ReadingModePageTextError = ReadingModePageTextErrors[keyof ReadingModePageTextErrors]
+
+export type ReadingModePageTextResponses = {
+  /**
+   * Extracted page text
+   */
+  200: {
+    pageCount: number
+    pages: Array<{
+      pageNumber: number
+      text: string
+    }>
+    combinedText: string
+  }
+}
+
+export type ReadingModePageTextResponse = ReadingModePageTextResponses[keyof ReadingModePageTextResponses]
+
+export type ReadingModePagePdfData = {
+  body?: {
+    sessionID: string
+    startPage: number
+    endPage: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/reading-mode/page-pdf"
+}
+
+export type ReadingModePagePdfErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ReadingModePagePdfError = ReadingModePagePdfErrors[keyof ReadingModePagePdfErrors]
+
+export type ReadingModePagePdfResponses = {
+  /**
+   * PDF binary for the requested page range
+   */
+  200: unknown
+}
 
 export type ReadingModeAnnotationsGetData = {
   body?: never
@@ -7010,6 +7441,1957 @@ export type ReadingModeSessionUpdateResponses = {
 
 export type ReadingModeSessionUpdateResponse =
   ReadingModeSessionUpdateResponses[keyof ReadingModeSessionUpdateResponses]
+
+export type IpkModelGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/model"
+}
+
+export type IpkModelGetResponses = {
+  /**
+   * Model config
+   */
+  200: {
+    version: "v1"
+    updated_at: string
+    models: {
+      summarize?: {
+        providerID: string
+        modelID: string
+      }
+      revise?: {
+        providerID: string
+        modelID: string
+      }
+      search?: {
+        providerID: string
+        modelID: string
+      }
+      associate?: {
+        providerID: string
+        modelID: string
+      }
+    }
+  }
+}
+
+export type IpkModelGetResponse = IpkModelGetResponses[keyof IpkModelGetResponses]
+
+export type IpkModelSetData = {
+  body?: {
+    summarize?: {
+      providerID: string
+      modelID: string
+    }
+    revise?: {
+      providerID: string
+      modelID: string
+    }
+    search?: {
+      providerID: string
+      modelID: string
+    }
+    associate?: {
+      providerID: string
+      modelID: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/model"
+}
+
+export type IpkModelSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type IpkModelSetError = IpkModelSetErrors[keyof IpkModelSetErrors]
+
+export type IpkModelSetResponses = {
+  /**
+   * Model config
+   */
+  200: {
+    version: "v1"
+    updated_at: string
+    models: {
+      summarize?: {
+        providerID: string
+        modelID: string
+      }
+      revise?: {
+        providerID: string
+        modelID: string
+      }
+      search?: {
+        providerID: string
+        modelID: string
+      }
+      associate?: {
+        providerID: string
+        modelID: string
+      }
+    }
+  }
+}
+
+export type IpkModelSetResponse = IpkModelSetResponses[keyof IpkModelSetResponses]
+
+export type IpkPieceDraftData = {
+  body?: {
+    session_id?: string
+    message_ids: Array<string>
+    mode?: "new" | "edit"
+    piece_id?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/draft"
+}
+
+export type IpkPieceDraftErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type IpkPieceDraftError = IpkPieceDraftErrors[keyof IpkPieceDraftErrors]
+
+export type IpkPieceDraftResponses = {
+  /**
+   * Draft
+   */
+  200: {
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }
+}
+
+export type IpkPieceDraftResponse = IpkPieceDraftResponses[keyof IpkPieceDraftResponses]
+
+export type IpkPieceDraftStreamData = {
+  body?: {
+    session_id?: string
+    message_ids: Array<string>
+    mode?: "new" | "edit"
+    piece_id?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/draft/stream"
+}
+
+export type IpkPieceDraftStreamErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type IpkPieceDraftStreamError = IpkPieceDraftStreamErrors[keyof IpkPieceDraftStreamErrors]
+
+export type IpkPieceDraftStreamResponses = {
+  /**
+   * Draft stream
+   */
+  200: {
+    event: string
+    data: string
+  }
+}
+
+export type IpkPieceDraftStreamResponse = IpkPieceDraftStreamResponses[keyof IpkPieceDraftStreamResponses]
+
+export type IpkPieceReviseData = {
+  body?: {
+    draft_id: string
+    instruction: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/revise"
+}
+
+export type IpkPieceReviseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkPieceReviseError = IpkPieceReviseErrors[keyof IpkPieceReviseErrors]
+
+export type IpkPieceReviseResponses = {
+  /**
+   * Draft
+   */
+  200: {
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }
+}
+
+export type IpkPieceReviseResponse = IpkPieceReviseResponses[keyof IpkPieceReviseResponses]
+
+export type IpkPieceReviseStreamData = {
+  body?: {
+    draft_id: string
+    instruction: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/revise/stream"
+}
+
+export type IpkPieceReviseStreamErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkPieceReviseStreamError = IpkPieceReviseStreamErrors[keyof IpkPieceReviseStreamErrors]
+
+export type IpkPieceReviseStreamResponses = {
+  /**
+   * Draft stream
+   */
+  200: {
+    event: string
+    data: string
+  }
+}
+
+export type IpkPieceReviseStreamResponse = IpkPieceReviseStreamResponses[keyof IpkPieceReviseStreamResponses]
+
+export type IpkPieceStashData = {
+  body?: {
+    draft_id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/stash"
+}
+
+export type IpkPieceStashErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkPieceStashError = IpkPieceStashErrors[keyof IpkPieceStashErrors]
+
+export type IpkPieceStashResponses = {
+  /**
+   * Draft
+   */
+  200: {
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }
+}
+
+export type IpkPieceStashResponse = IpkPieceStashResponses[keyof IpkPieceStashResponses]
+
+export type IpkPieceCommitData = {
+  body?: {
+    draft_id: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/commit"
+}
+
+export type IpkPieceCommitErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkPieceCommitError = IpkPieceCommitErrors[keyof IpkPieceCommitErrors]
+
+export type IpkPieceCommitResponses = {
+  /**
+   * Commit result
+   */
+  200: {
+    piece_id: string
+    card: {
+      piece_id: string
+      title: string
+      body_summary: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      status: string
+      created_at: string
+      updated_at: string
+      projects: Array<string>
+    }
+  }
+}
+
+export type IpkPieceCommitResponse = IpkPieceCommitResponses[keyof IpkPieceCommitResponses]
+
+export type IpkReindexData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/reindex"
+}
+
+export type IpkReindexResponses = {
+  /**
+   * Reindex result
+   */
+  200: {
+    updated_at: string
+    count: number
+  }
+}
+
+export type IpkReindexResponse = IpkReindexResponses[keyof IpkReindexResponses]
+
+export type IpkSearchData = {
+  body?: {
+    query: string
+    limit?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/search"
+}
+
+export type IpkSearchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type IpkSearchError = IpkSearchErrors[keyof IpkSearchErrors]
+
+export type IpkSearchResponses = {
+  /**
+   * Search results
+   */
+  200: Array<{
+    piece_id: string
+    title: string
+    summary: string
+    role: string
+    confidence: number
+    why: string
+  }>
+}
+
+export type IpkSearchResponse = IpkSearchResponses[keyof IpkSearchResponses]
+
+export type IpkAssociateData = {
+  body?: {
+    query: string
+    limit?: number
+    seed_piece_id?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/associate"
+}
+
+export type IpkAssociateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type IpkAssociateError = IpkAssociateErrors[keyof IpkAssociateErrors]
+
+export type IpkAssociateResponses = {
+  /**
+   * Associate results
+   */
+  200: Array<{
+    piece_id: string
+    title: string
+    summary: string
+    bridge_reason: string
+    risk: string
+    confidence: number
+  }>
+}
+
+export type IpkAssociateResponse = IpkAssociateResponses[keyof IpkAssociateResponses]
+
+export type IpkDraftsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/drafts"
+}
+
+export type IpkDraftsListResponses = {
+  /**
+   * Drafts
+   */
+  200: Array<{
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }>
+}
+
+export type IpkDraftsListResponse = IpkDraftsListResponses[keyof IpkDraftsListResponses]
+
+export type IpkPiecesListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/pieces"
+}
+
+export type IpkPiecesListResponses = {
+  /**
+   * Pieces
+   */
+  200: Array<{
+    piece_id: string
+    title: string
+    body_summary: string
+    type: "idea" | "knowledge" | "thread" | "review" | "plan"
+    status: string
+    created_at: string
+    updated_at: string
+    projects: Array<string>
+  }>
+}
+
+export type IpkPiecesListResponse = IpkPiecesListResponses[keyof IpkPiecesListResponses]
+
+export type IpkPieceEditStartData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/piece/{id}/edit-start"
+}
+
+export type IpkPieceEditStartErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkPieceEditStartError = IpkPieceEditStartErrors[keyof IpkPieceEditStartErrors]
+
+export type IpkPieceEditStartResponses = {
+  /**
+   * Draft
+   */
+  200: {
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }
+}
+
+export type IpkPieceEditStartResponse = IpkPieceEditStartResponses[keyof IpkPieceEditStartResponses]
+
+export type IpkDraftGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/ipk/draft/{id}"
+}
+
+export type IpkDraftGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type IpkDraftGetError = IpkDraftGetErrors[keyof IpkDraftGetErrors]
+
+export type IpkDraftGetResponses = {
+  /**
+   * Draft
+   */
+  200: {
+    draft_id: string
+    mode: "new" | "edit"
+    state: "review" | "stashed" | "committed" | "discarded"
+    session_id?: string
+    message_ids: Array<string>
+    piece_id?: string
+    title: string
+    body_summary: string
+    body: string
+    meta: {
+      id: string
+      type: "idea" | "knowledge" | "thread" | "review" | "plan"
+      title: string
+      emoji?: string
+      created_at: string
+      updated_at: string
+      origin: {
+        kind: "chat" | "wechat" | "manual" | "import" | "book" | "review"
+        workspace_ref?: string
+        session_id?: string
+        message_range?: Array<string>
+      }
+      status: "seed" | "developing" | "stable" | "archived" | "superseded"
+      domains?: Array<string>
+      methods?: Array<string>
+      contexts?: Array<string>
+      projects?: Array<string>
+      sources?: Array<{
+        kind: string
+        ref: string
+      }>
+    }
+    surface: {
+      human: {
+        body_summary: string
+      }
+      catalog: {
+        summary: string
+        salience?: number
+      }
+      retrieve: {
+        summary: string
+        concepts?: Array<string>
+        problems?: Array<string>
+        questions?: Array<string>
+        claims?: Array<string>
+        assumptions?: Array<string>
+        open_questions?: Array<string>
+        keywords?: Array<string>
+        retrieval_hints?: Array<string>
+        role?: "idea" | "evidence" | "background" | "method" | "reflection"
+      }
+      associate: {
+        summary: string
+        concepts?: Array<string>
+        methods?: Array<string>
+        problems?: Array<string>
+        association_hints?: Array<string>
+        bridge_targets?: Array<string>
+        link_glimpse?: Array<{
+          target: string
+          kind: string
+          reason: string
+        }>
+        association_risk?: "low" | "medium" | "high"
+      }
+    }
+    links: {
+      links: Array<{
+        target: string
+        kind:
+          | "related_to"
+          | "supports"
+          | "contradicts"
+          | "extends"
+          | "derived_from"
+          | "part_of"
+          | "inspired_by"
+          | "revisits"
+          | "uses_method"
+          | "answers"
+        strength?: number
+        reason: string
+      }>
+    }
+    updated_at: string
+  }
+}
+
+export type IpkDraftGetResponse = IpkDraftGetResponses[keyof IpkDraftGetResponses]
+
+export type AdaptationHealthData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/health"
+}
+
+export type AdaptationHealthResponses = {
+  /**
+   * Health
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type AdaptationHealthResponse = AdaptationHealthResponses[keyof AdaptationHealthResponses]
+
+export type AdaptationStatusData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    session_id: string
+  }
+  url: "/adaptation/status"
+}
+
+export type AdaptationStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AdaptationStatusError = AdaptationStatusErrors[keyof AdaptationStatusErrors]
+
+export type AdaptationStatusResponses = {
+  /**
+   * Status
+   */
+  200: unknown
+}
+
+export type AdaptationContextCompileData = {
+  body?: {
+    session_id: string
+    request_id: string
+    request: string
+    budget?: {
+      max_sections?: number
+      max_chars?: number
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/context/compile"
+}
+
+export type AdaptationContextCompileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AdaptationContextCompileError = AdaptationContextCompileErrors[keyof AdaptationContextCompileErrors]
+
+export type AdaptationContextCompileResponses = {
+  /**
+   * Context packet
+   */
+  200: unknown
+}
+
+export type AdaptationContextGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/context/{id}"
+}
+
+export type AdaptationContextGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AdaptationContextGetError = AdaptationContextGetErrors[keyof AdaptationContextGetErrors]
+
+export type AdaptationContextGetResponses = {
+  /**
+   * Context packet
+   */
+  200: unknown
+}
+
+export type GetAdaptationSubjectsIdProfileData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/subjects/{id}/profile"
+}
+
+export type GetAdaptationSubjectsIdProfileResponses = {
+  200: unknown
+}
+
+export type GetAdaptationSubjectsIdPolicyData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/subjects/{id}/policy"
+}
+
+export type GetAdaptationSubjectsIdPolicyResponses = {
+  200: unknown
+}
+
+export type GetAdaptationInitiativesIdProfileData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/initiatives/{id}/profile"
+}
+
+export type GetAdaptationInitiativesIdProfileResponses = {
+  200: unknown
+}
+
+export type GetAdaptationInitiativesIdPolicyData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/initiatives/{id}/policy"
+}
+
+export type GetAdaptationInitiativesIdPolicyResponses = {
+  200: unknown
+}
+
+export type GetAdaptationProjectsIdProfileData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/projects/{id}/profile"
+}
+
+export type GetAdaptationProjectsIdProfileResponses = {
+  200: unknown
+}
+
+export type PostAdaptationSignalsExtractData = {
+  body?: {
+    session_id: string
+    mode: "manual_current_session" | "after_response" | "after_summary"
+    message_ids?: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/signals/extract"
+}
+
+export type PostAdaptationSignalsExtractResponses = {
+  200: unknown
+}
+
+export type GetAdaptationSignalsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    session_id?: string
+  }
+  url: "/adaptation/signals"
+}
+
+export type GetAdaptationSignalsResponses = {
+  200: unknown
+}
+
+export type PostAdaptationSummariesRunData = {
+  body?: {
+    scope_level: "global" | "subject" | "initiative" | "task_scope" | "artifact"
+    scope_id: string
+    project_id?: string
+    signal_ids?: Array<string>
+    session_ids?: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/summaries/run"
+}
+
+export type PostAdaptationSummariesRunResponses = {
+  200: unknown
+}
+
+export type GetAdaptationSummariesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    scope_level?: string
+    scope_id?: string
+    project_id?: string
+  }
+  url: "/adaptation/summaries"
+}
+
+export type GetAdaptationSummariesResponses = {
+  200: unknown
+}
+
+export type GetAdaptationProposalsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    status?: string
+  }
+  url: "/adaptation/proposals"
+}
+
+export type GetAdaptationProposalsResponses = {
+  200: unknown
+}
+
+export type GetAdaptationProposalsIdData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/proposals/{id}"
+}
+
+export type GetAdaptationProposalsIdResponses = {
+  200: unknown
+}
+
+export type GetAdaptationHabitsData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    session_id: string
+  }
+  url: "/adaptation/habits"
+}
+
+export type GetAdaptationHabitsResponses = {
+  200: unknown
+}
+
+export type GetAdaptationScratchData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    session_id: string
+  }
+  url: "/adaptation/scratch"
+}
+
+export type GetAdaptationScratchResponses = {
+  200: unknown
+}
+
+export type GetAdaptationScratchReviewData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    session_id: string
+  }
+  url: "/adaptation/scratch/review"
+}
+
+export type GetAdaptationScratchReviewResponses = {
+  200: unknown
+}
+
+export type PostAdaptationScratchIdPromoteData = {
+  body?: {
+    session_id: string
+    scope: {
+      level: "global" | "subject" | "initiative" | "task_scope"
+      target: string
+    }
+    cleanup_duplicates?: boolean
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/scratch/{id}/promote"
+}
+
+export type PostAdaptationScratchIdPromoteResponses = {
+  200: unknown
+}
+
+export type PostAdaptationScratchIdActivateData = {
+  body?: {
+    session_id: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/scratch/{id}/activate"
+}
+
+export type PostAdaptationScratchIdActivateResponses = {
+  200: unknown
+}
+
+export type PostAdaptationScratchIdDismissData = {
+  body?: {
+    session_id: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/scratch/{id}/dismiss"
+}
+
+export type PostAdaptationScratchIdDismissResponses = {
+  200: unknown
+}
+
+export type PostAdaptationHabitsRemoveSourceData = {
+  body?: {
+    session_id: string
+    habit_id: string
+    scope_level: "initiative" | "task_scope"
+    scope_id: string
+    kind: "initiative_policy" | "task_scope" | "task_scope_policy"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/habits/remove-source"
+}
+
+export type PostAdaptationHabitsRemoveSourceResponses = {
+  200: unknown
+}
+
+export type PostAdaptationHabitsSuppressProjectData = {
+  body?: {
+    session_id: string
+    habit_id: string
+    scope_level: "initiative" | "task_scope"
+    scope_id: string
+    kind: "initiative_policy" | "task_scope" | "task_scope_policy"
+    note?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/habits/suppress-project"
+}
+
+export type PostAdaptationHabitsSuppressProjectResponses = {
+  200: unknown
+}
+
+export type PostAdaptationProposalsMergeData = {
+  body?: {
+    proposals: Array<unknown>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/proposals/merge"
+}
+
+export type PostAdaptationProposalsMergeResponses = {
+  200: unknown
+}
+
+export type PostAdaptationProposalsIdConfirmData = {
+  body?: {
+    review_note?: string
+    apply?: boolean
+    session_id?: string
+    scope_choice?: {
+      level: "global" | "subject" | "initiative" | "task_scope" | "artifact" | "session"
+      target: string
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/proposals/{id}/confirm"
+}
+
+export type PostAdaptationProposalsIdConfirmResponses = {
+  200: unknown
+}
+
+export type PostAdaptationProposalsIdRejectData = {
+  body?: {
+    review_note?: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/proposals/{id}/reject"
+}
+
+export type PostAdaptationProposalsIdRejectResponses = {
+  200: unknown
+}
+
+export type PostAdaptationProposalsIdDeferData = {
+  body?: {
+    review_note?: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/proposals/{id}/defer"
+}
+
+export type PostAdaptationProposalsIdDeferResponses = {
+  200: unknown
+}
+
+export type GetAdaptationPromotionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+    status?: string
+  }
+  url: "/adaptation/promotions"
+}
+
+export type GetAdaptationPromotionsResponses = {
+  200: unknown
+}
+
+export type AdaptationModelGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/model"
+}
+
+export type AdaptationModelGetResponses = {
+  /**
+   * Model config
+   */
+  200: {
+    version: "v1"
+    updated_at: string
+    models: {
+      signal_extract?: {
+        providerID: string
+        modelID: string
+      }
+      summary_aggregate?: {
+        providerID: string
+        modelID: string
+      }
+      proposal_generate?: {
+        providerID: string
+        modelID: string
+      }
+      semantic_merge?: {
+        providerID: string
+        modelID: string
+      }
+      scope_match?: {
+        providerID: string
+        modelID: string
+      }
+    }
+  }
+}
+
+export type AdaptationModelGetResponse = AdaptationModelGetResponses[keyof AdaptationModelGetResponses]
+
+export type AdaptationModelSetData = {
+  body?: {
+    signal_extract?: {
+      providerID: string
+      modelID: string
+    }
+    summary_aggregate?: {
+      providerID: string
+      modelID: string
+    }
+    proposal_generate?: {
+      providerID: string
+      modelID: string
+    }
+    semantic_merge?: {
+      providerID: string
+      modelID: string
+    }
+    scope_match?: {
+      providerID: string
+      modelID: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/model"
+}
+
+export type AdaptationModelSetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type AdaptationModelSetError = AdaptationModelSetErrors[keyof AdaptationModelSetErrors]
+
+export type AdaptationModelSetResponses = {
+  /**
+   * Model config
+   */
+  200: {
+    version: "v1"
+    updated_at: string
+    models: {
+      signal_extract?: {
+        providerID: string
+        modelID: string
+      }
+      summary_aggregate?: {
+        providerID: string
+        modelID: string
+      }
+      proposal_generate?: {
+        providerID: string
+        modelID: string
+      }
+      semantic_merge?: {
+        providerID: string
+        modelID: string
+      }
+      scope_match?: {
+        providerID: string
+        modelID: string
+      }
+    }
+  }
+}
+
+export type AdaptationModelSetResponse = AdaptationModelSetResponses[keyof AdaptationModelSetResponses]
+
+export type TaskScopeListData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/task-scope"
+}
+
+export type TaskScopeListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type TaskScopeListError = TaskScopeListErrors[keyof TaskScopeListErrors]
+
+export type TaskScopeListResponses = {
+  /**
+   * Task scopes
+   */
+  200: Array<unknown>
+}
+
+export type TaskScopeListResponse = TaskScopeListResponses[keyof TaskScopeListResponses]
+
+export type PostTaskScopeData = {
+  body?: {
+    project_id: string
+    title: string
+    kind: string
+    goal: string
+    active_subjects?: Array<string>
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/task-scope"
+}
+
+export type PostTaskScopeResponses = {
+  200: unknown
+}
+
+export type GetTaskScopeIdData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/task-scope/{id}"
+}
+
+export type GetTaskScopeIdResponses = {
+  200: unknown
+}
+
+export type PatchTaskScopeIdData = {
+  body?: {
+    status_summary?: string
+    done?: Array<string>
+    open_question_refs?: Array<{
+      artifact_id: string
+      path: string
+      note?: string
+    }>
+    decision_refs?: Array<{
+      artifact_id: string
+      path: string
+      note?: string
+    }>
+    linked_pieces?: Array<string>
+    artifacts?: Array<string>
+    open_questions?: Array<string>
+    decisions?: Array<string>
+    principles?: Array<string>
+  }
+  path: {
+    id: string
+  }
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/task-scope/{id}"
+}
+
+export type PatchTaskScopeIdResponses = {
+  200: unknown
+}
+
+export type PostTaskScopeIdBindSessionData = {
+  body?: {
+    session_id: string
+    project_id: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/task-scope/{id}/bind-session"
+}
+
+export type PostTaskScopeIdBindSessionResponses = {
+  200: unknown
+}
+
+export type PostTaskScopeMatchData = {
+  body?: {
+    session_id: string
+    request: string
+    cwd?: string
+    open_paths?: Array<string>
+    selected_message_ids?: Array<string>
+    user_scope_id?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/task-scope/match"
+}
+
+export type PostTaskScopeMatchResponses = {
+  200: unknown
+}
+
+export type ArtifactListData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/artifact"
+}
+
+export type ArtifactListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ArtifactListError = ArtifactListErrors[keyof ArtifactListErrors]
+
+export type ArtifactListResponses = {
+  /**
+   * Artifact list
+   */
+  200: Array<unknown>
+}
+
+export type ArtifactListResponse = ArtifactListResponses[keyof ArtifactListResponses]
+
+export type PostArtifactData = {
+  body?: {
+    project_id: string
+    task_scope_id?: string
+    role: string
+    path: string
+    format?: string
+    write_mode?: "revise_in_place" | "append" | "replace"
+    update_triggers?: Array<string>
+    partner_artifacts?: Array<string>
+    style_focus?: Array<string>
+    protected_regions?: Array<string>
+    preview_confirmed?: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/artifact"
+}
+
+export type PostArtifactResponses = {
+  200: unknown
+}
+
+export type GetArtifactIdData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/artifact/{id}"
+}
+
+export type GetArtifactIdResponses = {
+  200: unknown
+}
+
+export type PatchArtifactIdData = {
+  body?: {
+    role?: string
+    format?: string
+    write_mode?: "revise_in_place" | "append" | "replace"
+    update_triggers?: Array<string>
+    partner_artifacts?: Array<string>
+    style_focus?: Array<string>
+    protected_regions?: Array<string>
+    confirmed?: boolean
+  }
+  path: {
+    id: string
+  }
+  query: {
+    directory?: string
+    workspace?: string
+    project_id: string
+  }
+  url: "/artifact/{id}"
+}
+
+export type PatchArtifactIdResponses = {
+  200: unknown
+}
+
+export type PostArtifactMatchData = {
+  body?: {
+    project_id: string
+    task_scope_id?: string
+    paths?: Array<string>
+    request?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/artifact/match"
+}
+
+export type PostArtifactMatchResponses = {
+  200: unknown
+}
 
 export type InstanceDisposeData = {
   body?: never

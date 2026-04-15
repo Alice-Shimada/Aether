@@ -3,11 +3,23 @@
 import { client } from "./client.gen.js"
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js"
 import type {
+  AdaptationContextCompileErrors,
+  AdaptationContextCompileResponses,
+  AdaptationContextGetErrors,
+  AdaptationContextGetResponses,
+  AdaptationHealthResponses,
+  AdaptationModelGetResponses,
+  AdaptationModelSetErrors,
+  AdaptationModelSetResponses,
+  AdaptationStatusErrors,
+  AdaptationStatusResponses,
   AgentPartInput,
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
   AppSkillsResponses,
+  ArtifactListErrors,
+  ArtifactListResponses,
   Auth as Auth3,
   AuthRemoveErrors,
   AuthRemoveResponses,
@@ -24,6 +36,10 @@ import type {
   ConfigSkillsToggleResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  DatabaseLegacyMergeResponses,
+  DatabaseLegacyMergeStateResetResponses,
+  DatabaseLegacyMergeStateResponses,
+  DatabaseLegacyStatusResponses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -83,6 +99,21 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
+  GetAdaptationHabitsResponses,
+  GetAdaptationInitiativesIdPolicyResponses,
+  GetAdaptationInitiativesIdProfileResponses,
+  GetAdaptationProjectsIdProfileResponses,
+  GetAdaptationPromotionsResponses,
+  GetAdaptationProposalsIdResponses,
+  GetAdaptationProposalsResponses,
+  GetAdaptationScratchResponses,
+  GetAdaptationScratchReviewResponses,
+  GetAdaptationSignalsResponses,
+  GetAdaptationSubjectsIdPolicyResponses,
+  GetAdaptationSubjectsIdProfileResponses,
+  GetAdaptationSummariesResponses,
+  GetArtifactIdResponses,
+  GetTaskScopeIdResponses,
   GlobalConfigGetResponses,
   GlobalConfigUpdateErrors,
   GlobalConfigUpdateResponses,
@@ -97,7 +128,40 @@ import type {
   GlobalSyncEventSubscribeResponses,
   GlobalUpgradeErrors,
   GlobalUpgradeResponses,
+  GlobalWebUpdateCheckErrors,
+  GlobalWebUpdateCheckResponses,
+  GlobalWebUpdateCurrentResponses,
+  GlobalWebUpdateDownloadErrors,
+  GlobalWebUpdateDownloadResponses,
+  GlobalWebUpdateInstallErrors,
+  GlobalWebUpdateInstallResponses,
   InstanceDisposeResponses,
+  IpkAssociateErrors,
+  IpkAssociateResponses,
+  IpkDraftGetErrors,
+  IpkDraftGetResponses,
+  IpkDraftsListResponses,
+  IpkModelGetResponses,
+  IpkModelSetErrors,
+  IpkModelSetResponses,
+  IpkPieceCommitErrors,
+  IpkPieceCommitResponses,
+  IpkPieceDraftErrors,
+  IpkPieceDraftResponses,
+  IpkPieceDraftStreamErrors,
+  IpkPieceDraftStreamResponses,
+  IpkPieceEditStartErrors,
+  IpkPieceEditStartResponses,
+  IpkPieceReviseErrors,
+  IpkPieceReviseResponses,
+  IpkPieceReviseStreamErrors,
+  IpkPieceReviseStreamResponses,
+  IpkPiecesListResponses,
+  IpkPieceStashErrors,
+  IpkPieceStashResponses,
+  IpkReindexResponses,
+  IpkSearchErrors,
+  IpkSearchResponses,
   KnowledgeConfigGetResponses,
   KnowledgeConfigSetResponses,
   KnowledgeConfigUpdateErrors,
@@ -141,6 +205,8 @@ import type {
   PartDeleteResponses,
   PartUpdateErrors,
   PartUpdateResponses,
+  PatchArtifactIdResponses,
+  PatchTaskScopeIdResponses,
   PathGetResponses,
   PermissionListResponses,
   PermissionReplyErrors,
@@ -148,6 +214,22 @@ import type {
   PermissionRespondErrors,
   PermissionRespondResponses,
   PermissionRuleset,
+  PostAdaptationHabitsRemoveSourceResponses,
+  PostAdaptationHabitsSuppressProjectResponses,
+  PostAdaptationProposalsIdConfirmResponses,
+  PostAdaptationProposalsIdDeferResponses,
+  PostAdaptationProposalsIdRejectResponses,
+  PostAdaptationProposalsMergeResponses,
+  PostAdaptationScratchIdActivateResponses,
+  PostAdaptationScratchIdDismissResponses,
+  PostAdaptationScratchIdPromoteResponses,
+  PostAdaptationSignalsExtractResponses,
+  PostAdaptationSummariesRunResponses,
+  PostArtifactMatchResponses,
+  PostArtifactResponses,
+  PostTaskScopeIdBindSessionResponses,
+  PostTaskScopeMatchResponses,
+  PostTaskScopeResponses,
   ProjectCurrentResponses,
   ProjectDirectoriesResponses,
   ProjectInitGitResponses,
@@ -184,10 +266,16 @@ import type {
   ReadingModeAnnotationsGetResponses,
   ReadingModeAnnotationsUpdateErrors,
   ReadingModeAnnotationsUpdateResponses,
+  ReadingModePagePdfErrors,
+  ReadingModePagePdfResponses,
+  ReadingModePageTextErrors,
+  ReadingModePageTextResponses,
   ReadingModePdfGetErrors,
   ReadingModePdfGetResponses,
   ReadingModeSessionCreateErrors,
   ReadingModeSessionCreateResponses,
+  ReadingModeSessionFromFileErrors,
+  ReadingModeSessionFromFileResponses,
   ReadingModeSessionUpdateErrors,
   ReadingModeSessionUpdateResponses,
   SessionAbortErrors,
@@ -236,6 +324,8 @@ import type {
   SessionUpdateErrors,
   SessionUpdateResponses,
   SubtaskPartInput,
+  TaskScopeListErrors,
+  TaskScopeListResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -261,6 +351,7 @@ import type {
   VcsDiffResponses,
   VcsGetResponses,
   WechatEventsResponses,
+  WechatPingResponses,
   WechatSessionClearResponses,
   WechatStartResponses,
   WechatStatusResponses,
@@ -366,6 +457,111 @@ export class Proxy extends HeyApiClient {
     )
     return (options?.client ?? this.client).patch<GlobalProxyUpdateResponses, GlobalProxyUpdateErrors, ThrowOnError>({
       url: "/global/proxy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class WebUpdate extends HeyApiClient {
+  /**
+   * Get current web version
+   *
+   * Read the current web app version from local update state.
+   */
+  public current<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalWebUpdateCurrentResponses, unknown, ThrowOnError>({
+      url: "/global/web-update/current",
+      ...options,
+    })
+  }
+
+  /**
+   * Check web update
+   *
+   * Check for available web application updates by fetching remote version metadata.
+   */
+  public check<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      GlobalWebUpdateCheckResponses,
+      GlobalWebUpdateCheckErrors,
+      ThrowOnError
+    >({ url: "/global/web-update/check", ...options })
+  }
+
+  /**
+   * Download web update script
+   *
+   * Download the update/install script for the specified OS and version.
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters?: {
+      os?: "darwin" | "linux" | "windows"
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "os" },
+            { in: "body", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      GlobalWebUpdateDownloadResponses,
+      GlobalWebUpdateDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/global/web-update/download",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Execute web update script
+   *
+   * Execute the previously downloaded update script to install the new version.
+   */
+  public install<ThrowOnError extends boolean = false>(
+    parameters?: {
+      os?: "darwin" | "linux" | "windows"
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "os" },
+            { in: "body", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      GlobalWebUpdateInstallResponses,
+      GlobalWebUpdateInstallErrors,
+      ThrowOnError
+    >({
+      url: "/global/web-update/install",
       ...options,
       ...params,
       headers: {
@@ -528,6 +724,11 @@ export class Global extends HeyApiClient {
   private _proxy?: Proxy
   get proxy(): Proxy {
     return (this._proxy ??= new Proxy({ client: this.client }))
+  }
+
+  private _webUpdate?: WebUpdate
+  get webUpdate(): WebUpdate {
+    return (this._webUpdate ??= new WebUpdate({ client: this.client }))
   }
 
   private _syncEvent?: SyncEvent
@@ -3164,6 +3365,149 @@ export class Provider extends HeyApiClient {
   }
 }
 
+export class State extends HeyApiClient {
+  /**
+   * Reset merge state
+   *
+   * Mark merge completion state as consumed so restart will not re-show the completion toast.
+   */
+  public reset<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<DatabaseLegacyMergeStateResetResponses, unknown, ThrowOnError>({
+      url: "/database/legacy/merge/state/reset",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Merge extends HeyApiClient {
+  /**
+   * Get merge state
+   *
+   * Get merge state after auto merge.
+   */
+  public state<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<DatabaseLegacyMergeStateResponses, unknown, ThrowOnError>({
+      url: "/database/legacy/merge/state",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _state?: State
+  get state2(): State {
+    return (this._state ??= new State({ client: this.client }))
+  }
+}
+
+export class Legacy extends HeyApiClient {
+  /**
+   * Scan legacy databases
+   *
+   * Scan current data directory and report auto-merge status.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<DatabaseLegacyStatusResponses, unknown, ThrowOnError>({
+      url: "/database/legacy/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start legacy merge
+   *
+   * Automatically copy or agent-merge old opencode databases into the new target database.
+   */
+  public merge<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<DatabaseLegacyMergeResponses, unknown, ThrowOnError>({
+      url: "/database/legacy/merge",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _merge?: Merge
+  get merge2(): Merge {
+    return (this._merge ??= new Merge({ client: this.client }))
+  }
+}
+
+export class Database extends HeyApiClient {
+  private _legacy?: Legacy
+  get legacy(): Legacy {
+    return (this._legacy ??= new Legacy({ client: this.client }))
+  }
+}
+
 export class File extends HeyApiClient {
   /**
    * List active conversion/translation tasks
@@ -5542,6 +5886,36 @@ export class Wechat extends HeyApiClient {
   }
 
   /**
+   * Ping WeChat lease
+   *
+   * Renew the WeChat lock lease or detect if stolen by another client
+   */
+  public ping<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WechatPingResponses, unknown, ThrowOnError>({
+      url: "/wechat/ping",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get WeChat status
    *
    * Get the current WeChat bridge status
@@ -5641,6 +6015,55 @@ export class Session4 extends HeyApiClient {
   }
 
   /**
+   * Open reading mode from a workspace PDF file
+   */
+  public fromFile<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      path?: string
+      settings?: {
+        translatePrompt?: string
+        questionPrompt?: string
+        firstReadPrompt?: string
+        contextPageRange?: 0 | 1 | 2
+        autoFirstRead?: boolean
+      }
+      forceNew?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "path" },
+            { in: "body", key: "settings" },
+            { in: "body", key: "forceNew" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ReadingModeSessionFromFileResponses,
+      ReadingModeSessionFromFileErrors,
+      ThrowOnError
+    >({
+      url: "/reading-mode/session/from-file",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Update reading mode session settings
    */
   public update<ThrowOnError extends boolean = false>(
@@ -5656,6 +6079,7 @@ export class Session4 extends HeyApiClient {
         autoFirstRead?: boolean
       }
       firstReadCompleted?: boolean
+      firstReadDismissed?: boolean
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5669,6 +6093,7 @@ export class Session4 extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "body", key: "settings" },
             { in: "body", key: "firstReadCompleted" },
+            { in: "body", key: "firstReadDismissed" },
           ],
         },
       ],
@@ -5800,6 +6225,86 @@ export class Pdf extends HeyApiClient {
 }
 
 export class ReadingMode extends HeyApiClient {
+  /**
+   * Get extracted text for reading mode PDF pages
+   */
+  public pageText<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      sessionID?: string
+      startPage?: number
+      endPage?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "startPage" },
+            { in: "body", key: "endPage" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ReadingModePageTextResponses, ReadingModePageTextErrors, ThrowOnError>(
+      {
+        url: "/reading-mode/page-text",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Get a ranged PDF subdocument for reading mode
+   */
+  public pagePdf<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      sessionID?: string
+      startPage?: number
+      endPage?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "sessionID" },
+            { in: "body", key: "startPage" },
+            { in: "body", key: "endPage" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ReadingModePagePdfResponses, ReadingModePagePdfErrors, ThrowOnError>({
+      url: "/reading-mode/page-pdf",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   private _session?: Session4
   get session(): Session4 {
     return (this._session ??= new Session4({ client: this.client }))
@@ -5813,6 +6318,898 @@ export class ReadingMode extends HeyApiClient {
   private _pdf?: Pdf
   get pdf(): Pdf {
     return (this._pdf ??= new Pdf({ client: this.client }))
+  }
+}
+
+export class Model extends HeyApiClient {
+  /**
+   * Get IPK model config
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<IpkModelGetResponses, unknown, ThrowOnError>({
+      url: "/ipk/model",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set IPK model config
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      summarize?: {
+        providerID: string
+        modelID: string
+      }
+      revise?: {
+        providerID: string
+        modelID: string
+      }
+      search?: {
+        providerID: string
+        modelID: string
+      }
+      associate?: {
+        providerID: string
+        modelID: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "summarize" },
+            { in: "body", key: "revise" },
+            { in: "body", key: "search" },
+            { in: "body", key: "associate" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkModelSetResponses, IpkModelSetErrors, ThrowOnError>({
+      url: "/ipk/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Draft extends HeyApiClient {
+  /**
+   * Create IPK draft by stream
+   */
+  public stream<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      message_ids?: Array<string>
+      mode?: "new" | "edit"
+      piece_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "message_ids" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "piece_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.post<
+      IpkPieceDraftStreamResponses,
+      IpkPieceDraftStreamErrors,
+      ThrowOnError
+    >({
+      url: "/ipk/piece/draft/stream",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Revise extends HeyApiClient {
+  /**
+   * Revise IPK draft by stream
+   */
+  public stream<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      draft_id?: string
+      instruction?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "draft_id" },
+            { in: "body", key: "instruction" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).sse.post<
+      IpkPieceReviseStreamResponses,
+      IpkPieceReviseStreamErrors,
+      ThrowOnError
+    >({
+      url: "/ipk/piece/revise/stream",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Piece extends HeyApiClient {
+  /**
+   * Create IPK draft
+   */
+  public draft<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      message_ids?: Array<string>
+      mode?: "new" | "edit"
+      piece_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "message_ids" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "piece_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkPieceDraftResponses, IpkPieceDraftErrors, ThrowOnError>({
+      url: "/ipk/piece/draft",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Revise IPK draft
+   */
+  public revise<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      draft_id?: string
+      instruction?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "draft_id" },
+            { in: "body", key: "instruction" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkPieceReviseResponses, IpkPieceReviseErrors, ThrowOnError>({
+      url: "/ipk/piece/revise",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Stash IPK draft
+   */
+  public stash<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      draft_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "draft_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkPieceStashResponses, IpkPieceStashErrors, ThrowOnError>({
+      url: "/ipk/piece/stash",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Commit IPK draft
+   */
+  public commit<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      draft_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "draft_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkPieceCommitResponses, IpkPieceCommitErrors, ThrowOnError>({
+      url: "/ipk/piece/commit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Start IPK edit draft from piece
+   */
+  public editStart<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkPieceEditStartResponses, IpkPieceEditStartErrors, ThrowOnError>({
+      url: "/ipk/piece/{id}/edit-start",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _draft?: Draft
+  get draft2(): Draft {
+    return (this._draft ??= new Draft({ client: this.client }))
+  }
+
+  private _revise?: Revise
+  get revise2(): Revise {
+    return (this._revise ??= new Revise({ client: this.client }))
+  }
+}
+
+export class Drafts extends HeyApiClient {
+  /**
+   * List IPK drafts
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<IpkDraftsListResponses, unknown, ThrowOnError>({
+      url: "/ipk/drafts",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Pieces extends HeyApiClient {
+  /**
+   * List IPK pieces
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<IpkPiecesListResponses, unknown, ThrowOnError>({
+      url: "/ipk/pieces",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Draft2 extends HeyApiClient {
+  /**
+   * Get IPK draft
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<IpkDraftGetResponses, IpkDraftGetErrors, ThrowOnError>({
+      url: "/ipk/draft/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Ipk extends HeyApiClient {
+  /**
+   * Rebuild IPK indexes
+   */
+  public reindex<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkReindexResponses, unknown, ThrowOnError>({
+      url: "/ipk/reindex",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Search IPK pieces
+   */
+  public search<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      query?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "query" },
+            { in: "body", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkSearchResponses, IpkSearchErrors, ThrowOnError>({
+      url: "/ipk/search",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Associate IPK pieces
+   */
+  public associate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      query?: string
+      limit?: number
+      seed_piece_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "query" },
+            { in: "body", key: "limit" },
+            { in: "body", key: "seed_piece_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<IpkAssociateResponses, IpkAssociateErrors, ThrowOnError>({
+      url: "/ipk/associate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  private _model?: Model
+  get model(): Model {
+    return (this._model ??= new Model({ client: this.client }))
+  }
+
+  private _piece?: Piece
+  get piece(): Piece {
+    return (this._piece ??= new Piece({ client: this.client }))
+  }
+
+  private _drafts?: Drafts
+  get drafts(): Drafts {
+    return (this._drafts ??= new Drafts({ client: this.client }))
+  }
+
+  private _pieces?: Pieces
+  get pieces(): Pieces {
+    return (this._pieces ??= new Pieces({ client: this.client }))
+  }
+
+  private _draft?: Draft2
+  get draft(): Draft2 {
+    return (this._draft ??= new Draft2({ client: this.client }))
+  }
+}
+
+export class Context extends HeyApiClient {
+  /**
+   * Compile adaptation context
+   */
+  public compile<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      request_id?: string
+      request?: string
+      budget?: {
+        max_sections?: number
+        max_chars?: number
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "request_id" },
+            { in: "body", key: "request" },
+            { in: "body", key: "budget" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AdaptationContextCompileResponses,
+      AdaptationContextCompileErrors,
+      ThrowOnError
+    >({
+      url: "/adaptation/context/compile",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get context packet
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      AdaptationContextGetResponses,
+      AdaptationContextGetErrors,
+      ThrowOnError
+    >({
+      url: "/adaptation/context/{id}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Model2 extends HeyApiClient {
+  /**
+   * Get adaptation model config
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AdaptationModelGetResponses, unknown, ThrowOnError>({
+      url: "/adaptation/model",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set adaptation model config
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      signal_extract?: {
+        providerID: string
+        modelID: string
+      }
+      summary_aggregate?: {
+        providerID: string
+        modelID: string
+      }
+      proposal_generate?: {
+        providerID: string
+        modelID: string
+      }
+      semantic_merge?: {
+        providerID: string
+        modelID: string
+      }
+      scope_match?: {
+        providerID: string
+        modelID: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "signal_extract" },
+            { in: "body", key: "summary_aggregate" },
+            { in: "body", key: "proposal_generate" },
+            { in: "body", key: "semantic_merge" },
+            { in: "body", key: "scope_match" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AdaptationModelSetResponses, AdaptationModelSetErrors, ThrowOnError>({
+      url: "/adaptation/model",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Adaptation extends HeyApiClient {
+  /**
+   * Adaptation health
+   */
+  public health<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AdaptationHealthResponses, unknown, ThrowOnError>({
+      url: "/adaptation/health",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get adaptation status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      session_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AdaptationStatusResponses, AdaptationStatusErrors, ThrowOnError>({
+      url: "/adaptation/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _context?: Context
+  get context(): Context {
+    return (this._context ??= new Context({ client: this.client }))
+  }
+
+  private _model?: Model2
+  get model(): Model2 {
+    return (this._model ??= new Model2({ client: this.client }))
+  }
+}
+
+export class TaskScope extends HeyApiClient {
+  /**
+   * List task scopes
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      project_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<TaskScopeListResponses, TaskScopeListErrors, ThrowOnError>({
+      url: "/task-scope",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Artifact extends HeyApiClient {
+  /**
+   * List artifact contracts
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      project_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ArtifactListResponses, ArtifactListErrors, ThrowOnError>({
+      url: "/artifact",
+      ...options,
+      ...params,
+    })
   }
 }
 
@@ -6155,6 +7552,1147 @@ export class OpencodeClient extends HeyApiClient {
     OpencodeClient.__registry.set(this, args?.key)
   }
 
+  public getAdaptationSubjectsIdProfile<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationSubjectsIdProfileResponses, unknown, ThrowOnError>({
+      url: "/adaptation/subjects/{id}/profile",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationSubjectsIdPolicy<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationSubjectsIdPolicyResponses, unknown, ThrowOnError>({
+      url: "/adaptation/subjects/{id}/policy",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationInitiativesIdProfile<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationInitiativesIdProfileResponses, unknown, ThrowOnError>({
+      url: "/adaptation/initiatives/{id}/profile",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationInitiativesIdPolicy<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationInitiativesIdPolicyResponses, unknown, ThrowOnError>({
+      url: "/adaptation/initiatives/{id}/policy",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationProjectsIdProfile<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationProjectsIdProfileResponses, unknown, ThrowOnError>({
+      url: "/adaptation/projects/{id}/profile",
+      ...options,
+      ...params,
+    })
+  }
+
+  public postAdaptationSignalsExtract<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      mode?: "manual_current_session" | "after_response" | "after_summary"
+      message_ids?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "message_ids" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationSignalsExtractResponses, unknown, ThrowOnError>({
+      url: "/adaptation/signals/extract",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public getAdaptationSignals<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationSignalsResponses, unknown, ThrowOnError>({
+      url: "/adaptation/signals",
+      ...options,
+      ...params,
+    })
+  }
+
+  public postAdaptationSummariesRun<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      scope_level?: "global" | "subject" | "initiative" | "task_scope" | "artifact"
+      scope_id?: string
+      project_id?: string
+      signal_ids?: Array<string>
+      session_ids?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "scope_level" },
+            { in: "body", key: "scope_id" },
+            { in: "body", key: "project_id" },
+            { in: "body", key: "signal_ids" },
+            { in: "body", key: "session_ids" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationSummariesRunResponses, unknown, ThrowOnError>({
+      url: "/adaptation/summaries/run",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public getAdaptationSummaries<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      scope_level?: string
+      scope_id?: string
+      project_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "scope_level" },
+            { in: "query", key: "scope_id" },
+            { in: "query", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationSummariesResponses, unknown, ThrowOnError>({
+      url: "/adaptation/summaries",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationProposals<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      status?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "status" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationProposalsResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationProposalsId<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationProposalsIdResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationHabits<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      session_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationHabitsResponses, unknown, ThrowOnError>({
+      url: "/adaptation/habits",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationScratch<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      session_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationScratchResponses, unknown, ThrowOnError>({
+      url: "/adaptation/scratch",
+      ...options,
+      ...params,
+    })
+  }
+
+  public getAdaptationScratchReview<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      session_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationScratchReviewResponses, unknown, ThrowOnError>({
+      url: "/adaptation/scratch/review",
+      ...options,
+      ...params,
+    })
+  }
+
+  public postAdaptationScratchIdPromote<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      session_id?: string
+      scope?: {
+        level: "global" | "subject" | "initiative" | "task_scope"
+        target: string
+      }
+      cleanup_duplicates?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "scope" },
+            { in: "body", key: "cleanup_duplicates" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationScratchIdPromoteResponses, unknown, ThrowOnError>({
+      url: "/adaptation/scratch/{id}/promote",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationScratchIdActivate<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      session_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationScratchIdActivateResponses, unknown, ThrowOnError>({
+      url: "/adaptation/scratch/{id}/activate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationScratchIdDismiss<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      session_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationScratchIdDismissResponses, unknown, ThrowOnError>({
+      url: "/adaptation/scratch/{id}/dismiss",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationHabitsRemoveSource<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      habit_id?: string
+      scope_level?: "initiative" | "task_scope"
+      scope_id?: string
+      kind?: "initiative_policy" | "task_scope" | "task_scope_policy"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "habit_id" },
+            { in: "body", key: "scope_level" },
+            { in: "body", key: "scope_id" },
+            { in: "body", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationHabitsRemoveSourceResponses, unknown, ThrowOnError>({
+      url: "/adaptation/habits/remove-source",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationHabitsSuppressProject<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      habit_id?: string
+      scope_level?: "initiative" | "task_scope"
+      scope_id?: string
+      kind?: "initiative_policy" | "task_scope" | "task_scope_policy"
+      note?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "habit_id" },
+            { in: "body", key: "scope_level" },
+            { in: "body", key: "scope_id" },
+            { in: "body", key: "kind" },
+            { in: "body", key: "note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationHabitsSuppressProjectResponses, unknown, ThrowOnError>({
+      url: "/adaptation/habits/suppress-project",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationProposalsMerge<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      proposals?: Array<unknown>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "proposals" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationProposalsMergeResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals/merge",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationProposalsIdConfirm<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      review_note?: string
+      apply?: boolean
+      session_id?: string
+      scope_choice?: {
+        level: "global" | "subject" | "initiative" | "task_scope" | "artifact" | "session"
+        target: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "review_note" },
+            { in: "body", key: "apply" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "scope_choice" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationProposalsIdConfirmResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals/{id}/confirm",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationProposalsIdReject<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      review_note?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "review_note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationProposalsIdRejectResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals/{id}/reject",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postAdaptationProposalsIdDefer<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      review_note?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "review_note" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationProposalsIdDeferResponses, unknown, ThrowOnError>({
+      url: "/adaptation/proposals/{id}/defer",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public getAdaptationPromotions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      status?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "status" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetAdaptationPromotionsResponses, unknown, ThrowOnError>({
+      url: "/adaptation/promotions",
+      ...options,
+      ...params,
+    })
+  }
+
+  public postTaskScope<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      project_id?: string
+      title?: string
+      kind?: string
+      goal?: string
+      active_subjects?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "project_id" },
+            { in: "body", key: "title" },
+            { in: "body", key: "kind" },
+            { in: "body", key: "goal" },
+            { in: "body", key: "active_subjects" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostTaskScopeResponses, unknown, ThrowOnError>({
+      url: "/task-scope",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public getTaskScopeId<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      project_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetTaskScopeIdResponses, unknown, ThrowOnError>({
+      url: "/task-scope/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  public patchTaskScopeId<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      project_id: string
+      status_summary?: string
+      done?: Array<string>
+      open_question_refs?: Array<{
+        artifact_id: string
+        path: string
+        note?: string
+      }>
+      decision_refs?: Array<{
+        artifact_id: string
+        path: string
+        note?: string
+      }>
+      linked_pieces?: Array<string>
+      artifacts?: Array<string>
+      open_questions?: Array<string>
+      decisions?: Array<string>
+      principles?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+            { in: "body", key: "status_summary" },
+            { in: "body", key: "done" },
+            { in: "body", key: "open_question_refs" },
+            { in: "body", key: "decision_refs" },
+            { in: "body", key: "linked_pieces" },
+            { in: "body", key: "artifacts" },
+            { in: "body", key: "open_questions" },
+            { in: "body", key: "decisions" },
+            { in: "body", key: "principles" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<PatchTaskScopeIdResponses, unknown, ThrowOnError>({
+      url: "/task-scope/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postTaskScopeIdBindSession<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      session_id?: string
+      project_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostTaskScopeIdBindSessionResponses, unknown, ThrowOnError>({
+      url: "/task-scope/{id}/bind-session",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postTaskScopeMatch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      session_id?: string
+      request?: string
+      cwd?: string
+      open_paths?: Array<string>
+      selected_message_ids?: Array<string>
+      user_scope_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "request" },
+            { in: "body", key: "cwd" },
+            { in: "body", key: "open_paths" },
+            { in: "body", key: "selected_message_ids" },
+            { in: "body", key: "user_scope_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostTaskScopeMatchResponses, unknown, ThrowOnError>({
+      url: "/task-scope/match",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postArtifact<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      project_id?: string
+      task_scope_id?: string
+      role?: string
+      path?: string
+      format?: string
+      write_mode?: "revise_in_place" | "append" | "replace"
+      update_triggers?: Array<string>
+      partner_artifacts?: Array<string>
+      style_focus?: Array<string>
+      protected_regions?: Array<string>
+      preview_confirmed?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "project_id" },
+            { in: "body", key: "task_scope_id" },
+            { in: "body", key: "role" },
+            { in: "body", key: "path" },
+            { in: "body", key: "format" },
+            { in: "body", key: "write_mode" },
+            { in: "body", key: "update_triggers" },
+            { in: "body", key: "partner_artifacts" },
+            { in: "body", key: "style_focus" },
+            { in: "body", key: "protected_regions" },
+            { in: "body", key: "preview_confirmed" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostArtifactResponses, unknown, ThrowOnError>({
+      url: "/artifact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public getArtifactId<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      project_id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GetArtifactIdResponses, unknown, ThrowOnError>({
+      url: "/artifact/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  public patchArtifactId<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      project_id: string
+      role?: string
+      format?: string
+      write_mode?: "revise_in_place" | "append" | "replace"
+      update_triggers?: Array<string>
+      partner_artifacts?: Array<string>
+      style_focus?: Array<string>
+      protected_regions?: Array<string>
+      confirmed?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "project_id" },
+            { in: "body", key: "role" },
+            { in: "body", key: "format" },
+            { in: "body", key: "write_mode" },
+            { in: "body", key: "update_triggers" },
+            { in: "body", key: "partner_artifacts" },
+            { in: "body", key: "style_focus" },
+            { in: "body", key: "protected_regions" },
+            { in: "body", key: "confirmed" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<PatchArtifactIdResponses, unknown, ThrowOnError>({
+      url: "/artifact/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public postArtifactMatch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      project_id?: string
+      task_scope_id?: string
+      paths?: Array<string>
+      request?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "project_id" },
+            { in: "body", key: "task_scope_id" },
+            { in: "body", key: "paths" },
+            { in: "body", key: "request" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostArtifactMatchResponses, unknown, ThrowOnError>({
+      url: "/artifact/match",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   private _global?: Global
   get global(): Global {
     return (this._global ??= new Global({ client: this.client }))
@@ -6220,6 +8758,11 @@ export class OpencodeClient extends HeyApiClient {
     return (this._provider ??= new Provider({ client: this.client }))
   }
 
+  private _database?: Database
+  get database(): Database {
+    return (this._database ??= new Database({ client: this.client }))
+  }
+
   private _file?: File
   get file(): File {
     return (this._file ??= new File({ client: this.client }))
@@ -6258,6 +8801,26 @@ export class OpencodeClient extends HeyApiClient {
   private _readingMode?: ReadingMode
   get readingMode(): ReadingMode {
     return (this._readingMode ??= new ReadingMode({ client: this.client }))
+  }
+
+  private _ipk?: Ipk
+  get ipk(): Ipk {
+    return (this._ipk ??= new Ipk({ client: this.client }))
+  }
+
+  private _adaptation?: Adaptation
+  get adaptation(): Adaptation {
+    return (this._adaptation ??= new Adaptation({ client: this.client }))
+  }
+
+  private _taskScope?: TaskScope
+  get taskScope(): TaskScope {
+    return (this._taskScope ??= new TaskScope({ client: this.client }))
+  }
+
+  private _artifact?: Artifact
+  get artifact(): Artifact {
+    return (this._artifact ??= new Artifact({ client: this.client }))
   }
 
   private _instance?: Instance

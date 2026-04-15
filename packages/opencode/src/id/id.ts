@@ -6,6 +6,8 @@ export namespace Identifier {
     event: "evt",
     session: "ses",
     message: "msg",
+    piece: "piece",
+    draft: "draft",
     permission: "per",
     question: "que",
     user: "usr",
@@ -13,6 +15,12 @@ export namespace Identifier {
     pty: "pty",
     tool: "tool",
     workspace: "wrk",
+    signal: "sig",
+    summary: "sum",
+    proposal: "prop",
+    scope: "scope",
+    artifact: "artifact",
+    packet: "packet",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {

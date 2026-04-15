@@ -35,6 +35,7 @@ import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
+import { useAdaptation } from "@/context/adaptation"
 import { usePlatform } from "@/context/platform"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
@@ -120,6 +121,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const command = useCommand()
   const permission = usePermission()
   const language = useLanguage()
+  const adaptation = useAdaptation()
   const platform = usePlatform()
   const { params, tabs, view } = useSessionLayout()
   let editorRef!: HTMLDivElement
@@ -127,6 +129,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let scrollRef!: HTMLDivElement
   let slashPopoverRef!: HTMLDivElement
   let shellFormRef: HTMLFormElement | undefined
+
+  createEffect(
+    on(
+      () => params.id,
+      (id) => {
+        void adaptation.setSession(id)
+      },
+      { defer: true },
+    ),
+  )
 
   const mirror = { input: false }
   const inset = 56

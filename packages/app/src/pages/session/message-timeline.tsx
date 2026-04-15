@@ -20,8 +20,13 @@ import { getFilename } from "@opencode-ai/util/path"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { SessionContextUsage } from "@/components/session-context-usage"
+import { IpkSummaryButton } from "@/components/ipk-summary-button"
+import { AdaptationOrganizeSessionButton } from "@/components/adaptation-organize-session-button"
+import { AdaptationScratchButton } from "@/components/adaptation-scratch-button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLanguage } from "@/context/language"
+import { useIpk } from "@/context/ipk"
+import { useAdaptation } from "@/context/adaptation"
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { usePlatform } from "@/context/platform"
@@ -222,6 +227,7 @@ export function MessageTimeline(props: {
 }) {
   let touchGesture: number | undefined
   let log: HTMLDivElement | undefined
+  let rail: HTMLDivElement | undefined
 
   const navigate = useNavigate()
   const globalSDK = useGlobalSDK()
@@ -230,6 +236,8 @@ export function MessageTimeline(props: {
   const settings = useSettings()
   const dialog = useDialog()
   const language = useLanguage()
+  const ipk = useIpk()
+  const adaptation = useAdaptation()
   const { params, sessionKey } = useSessionKey()
   const platform = usePlatform()
 
@@ -239,6 +247,10 @@ export function MessageTimeline(props: {
     const id = sessionID()
     if (!id) return emptyMessages
     return sync.data.message[id] ?? emptyMessages
+  })
+
+  createEffect(() => {
+    ipk.setRank(sessionMessages().map((item) => item.id))
   })
   const pending = createMemo(() =>
     sessionMessages().findLast(
@@ -267,6 +279,27 @@ export function MessageTimeline(props: {
     setTimeoutDone(false)
     makeTimer(() => setTimeoutDone(true), 260, setTimeout)
   })
+
+  createEffect(
+    on(
+      () => [sessionID(), working()] as const,
+      ([id, busy], prev) => {
+        const old = prev?.[0] === id ? (prev?.[1] ?? false) : false
+        if (!id || busy || !old) return
+
+        // Background after_response extraction is async, so pull twice shortly
+        // after the turn settles to surface new scratch habits without manual refresh.
+        const jobs = [450, 1800].map((ms) =>
+          window.setTimeout(() => {
+            if (sessionID() !== id) return
+            void adaptation.refresh().catch(() => undefined)
+          }, ms),
+        )
+        onCleanup(() => jobs.forEach((job) => window.clearTimeout(job)))
+      },
+      { defer: true },
+    ),
+  )
 
   const activeMessageID = createMemo(() => {
     const parentID = pending()?.parentID
@@ -543,6 +576,55 @@ export function MessageTimeline(props: {
     navigate(`/${params.dir}/session/${id}`)
   }
 
+  const chain = (id: string) => {
+    const list = sessionMessages()
+    const idx = list.findIndex((item) => item.id === id)
+    if (idx < 0) return [id]
+    const msg = list[idx]
+    if (!msg || msg.role !== "user") return [id]
+    const ids = [id]
+    for (let i = idx + 1; i < list.length; i += 1) {
+      const item = list[i]
+      if (!item) continue
+      if (item.role === "user") break
+      if (item.role === "assistant" && item.parentID === id) ids.push(item.id)
+    }
+    return ids
+  }
+
+  const pickTo = () => {
+    if (!ipk.selecting() || !log || !rail) return
+    const line = rail.getBoundingClientRect()
+    const y = line.top + line.height / 2
+    const rows = Array.from(log.querySelectorAll<HTMLElement>("[data-message-id]"))
+    if (rows.length === 0) return
+    let cut = -1
+    for (let i = 0; i < rows.length; i += 1) {
+      const box = rows[i].getBoundingClientRect()
+      if (box.top <= y && box.bottom >= y) cut = i
+    }
+    if (cut < 0) {
+      for (let i = 0; i < rows.length; i += 1) {
+        const box = rows[i].getBoundingClientRect()
+        if (box.top < y) cut = i
+      }
+    }
+    if (cut < 0) return
+    const already = ipk.selected()
+    let start = 0
+    if (already.length > 0) {
+      const set = new Set(already)
+      for (let i = 0; i < rows.length; i += 1) {
+        const ids = chain(rows[i].dataset.messageId ?? "")
+        if (ids.some((id) => set.has(id))) {
+          start = i
+          break
+        }
+      }
+    }
+    ipk.select(rows.slice(start, cut + 1).flatMap((row) => chain(row.dataset.messageId ?? "")))
+  }
+
   function DialogDeleteSession(props: { sessionID: string }) {
     const name = createMemo(() => sync.session.get(props.sessionID)?.title ?? language.t("command.session.new"))
     const handleDelete = async () => {
@@ -596,6 +678,33 @@ export function MessageTimeline(props: {
             <Icon name="arrow-down-to-line" />
           </button>
         </div>
+        <Show when={ipk.selecting() && ipk.count() > 0}>
+          <div class="absolute bottom-6 right-6 z-[60]">
+            <Button variant="primary" onClick={() => void ipk.begin()} disabled={ipk.busy()}>
+              开始总结
+            </Button>
+          </div>
+        </Show>
+        <Show when={ipk.selecting()}>
+          <div class="absolute inset-x-0 bottom-20 z-[58] pointer-events-none">
+            <div
+              class="relative w-full px-4 md:px-5"
+              classList={{
+                "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered,
+              }}
+            >
+              <div ref={rail} class="h-px w-full bg-border-weak-base" />
+              <button
+                type="button"
+                class="pointer-events-auto mt-2 inline-flex items-center gap-1 rounded-full border border-border-weak-base bg-background-base px-3 py-1.5 text-12-medium text-text-strong shadow-sm hover:bg-background-stronger transition-colors"
+                onClick={pickTo}
+              >
+                <span>↑</span>
+                <span>选择到这里</span>
+              </button>
+            </div>
+          </div>
+        </Show>
         <ScrollView
           viewportRef={props.setScrollRef}
           onWheel={(e) => {
@@ -731,6 +840,9 @@ export function MessageTimeline(props: {
                   <Show when={sessionID()}>
                     {(id) => (
                       <div class="shrink-0 flex items-center gap-3">
+                        <IpkSummaryButton sessionID={id()} />
+                        <AdaptationOrganizeSessionButton />
+                        <AdaptationScratchButton />
                         <SessionContextUsage placement="bottom" />
                         <DropdownMenu
                           gutter={4}
@@ -911,6 +1023,9 @@ export function MessageTimeline(props: {
             </Show>
             <div
               role="log"
+              ref={(el) => {
+                log = el
+              }}
               data-slot="session-turn-list"
               class="flex flex-col items-start justify-start pb-16 transition-[margin]"
               classList={{
@@ -938,6 +1053,8 @@ export function MessageTimeline(props: {
               <For each={rendered()}>
                 {(messageID) => {
                   const active = createMemo(() => activeMessageID() === messageID)
+                  const group = createMemo(() => chain(messageID))
+                  const chosen = createMemo(() => ipk.selectedAll(group()))
                   const comments = createMemo(() => messageComments(sync.data.part[messageID] ?? []), [], {
                     equals: (a, b) =>
                       a.length === b.length &&
@@ -954,12 +1071,30 @@ export function MessageTimeline(props: {
                     <div
                       id={props.anchor(messageID)}
                       data-message-id={messageID}
+                      class="relative rounded-md transition-colors duration-150"
                       classList={{
                         "min-w-0 w-full max-w-full": true,
                         "md:max-w-200 2xl:max-w-[1000px]": props.centered,
+                        "bg-surface-base-active": ipk.selecting() && chosen(),
                       }}
                       style={{ "content-visibility": "auto", "contain-intrinsic-size": "auto 500px" }}
                     >
+                      <Show when={ipk.selecting()}>
+                        <button
+                          type="button"
+                          class="absolute left-2 md:left-3 top-7 z-20 size-6 rounded-full border flex items-center justify-center transition-colors"
+                          classList={{
+                            "border-border-weak-base bg-background-base": !chosen(),
+                            "border-border-strong-base bg-surface-base-active": chosen(),
+                          }}
+                          onClick={() => ipk.toggle(group())}
+                          aria-label="选择消息"
+                        >
+                          <Show when={chosen()}>
+                            <Icon name="check" class="size-3.5" />
+                          </Show>
+                        </button>
+                      </Show>
                       <Show when={commentCount() > 0}>
                         <div class="w-full px-4 md:px-5 pb-2">
                           <div class="ml-auto max-w-[82%] overflow-x-auto no-scrollbar">
@@ -1013,7 +1148,7 @@ export function MessageTimeline(props: {
                         classes={{
                           root: "min-w-0 w-full relative",
                           content: "flex flex-col justify-between !overflow-visible",
-                          container: "w-full px-4 md:px-5",
+                          container: ipk.selecting() ? "w-full pl-10 pr-4 md:pl-11 md:pr-5" : "w-full px-4 md:px-5",
                         }}
                       />
                     </div>

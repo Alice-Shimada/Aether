@@ -126,3 +126,31 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+
+## LLM Model Routing Guard
+
+- After each code/doc edit batch, run:
+  - `python /home/bzz/Aether/.opencode/skills/llm-model-routing-guard/scripts/check_model_routing.py --repo /home/bzz/Aether`
+- Automatically map new/changed LLM call sites to existing model-setting kinds first.
+- Unless absolutely necessary, do not add a new model option.
+- If no existing kind fits, explicitly report why, then add one new model kind with aligned backend enum, frontend context type, settings dialog row, and synced docs.
+
+## IPK Doc Sync
+
+- For any IPK-related implementation change, always run the `ipk-doc-sync` workflow and keep `/home/bzz/Aether/docs/IPK` in sync in the same change.
+- Trigger with `Use $ipk-doc-sync ...` (or equivalent Chinese request) and include its sync report in the final response.
+- Audit command:
+  - `python /home/bzz/Aether/.opencode/skills/ipk-doc-sync/scripts/ipk-doc-sync-audit.py --repo /home/bzz/Aether --base dev --scan-content --strict`
+
+## Project Planning Discussion Sync
+
+- During project planning, architecture, system design, or implementation-plan discussions, automatically persist accepted decisions into the relevant design docs.
+- Put settled constraints and user-approved choices into files such as `implementation-decisions`, schema, integration, implementation guides, or equivalent authoritative docs.
+- Put all possible improvements, AI/user-proposed future directions, unresolved questions, tradeoffs, and v1-deferred ideas into the relevant `open-questions` document.
+- After any planning, design-doc, or implementation-guide update, audit the relevant `open-questions` document before finishing.
+- Remove or rewrite `open-questions` entries that were resolved by the new decision, code change, or doc update.
+- If an entry is partly resolved, move the settled part into the authoritative docs and leave only the remaining unresolved part in `open-questions`.
+- If a once-open item becomes obsolete, delete it or explicitly rewrite it as a vNext/tuning item with a current reason.
+- Include the open-questions cleanup result in the final report when planning docs changed.
+- Do this proactively when the user accepts or rejects a direction; do not wait for the user to explicitly say "update the docs" each time.
+- This rule is scoped to planning/building projects. Do not apply it to unrelated learning, casual Q&A, or one-off execution tasks unless the user asks.

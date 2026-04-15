@@ -11,11 +11,14 @@ import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
+import { useLocation } from "@solidjs/router"
 import { type LocalProject } from "@/context/layout"
 import { useAuth } from "@/context/auth"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLanguage } from "@/context/language"
 import { showToast } from "@opencode-ai/ui/toast"
+import { IpkLibraryMenu } from "@/components/ipk-library-menu"
+import { AdaptationMenu } from "@/components/adaptation-menu"
 
 export const SidebarContent = (props: {
   mobile?: boolean
@@ -47,6 +50,8 @@ export const SidebarContent = (props: {
   const auth = useAuth()
   const dialog = useDialog()
   const language = useLanguage()
+  const location = useLocation()
+  const ipk = createMemo(() => /\/session(?:\/[^/]+)?$/u.test(location.pathname))
   let panel: HTMLDivElement | undefined
   let authDialogRun = 0
 
@@ -132,6 +137,12 @@ export const SidebarContent = (props: {
           </DragDropProvider>
         </div>
         <div class="shrink-0 w-full pt-3 pb-6 flex flex-col items-center gap-2">
+          <Show when={ipk()}>
+            <AdaptationMenu rail placement={placement()} />
+          </Show>
+          <Show when={ipk()}>
+            <IpkLibraryMenu rail placement={placement()} />
+          </Show>
           <Show
             when={auth.isAuthenticated && auth.account}
             fallback={

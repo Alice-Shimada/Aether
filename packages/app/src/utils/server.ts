@@ -209,7 +209,21 @@ export function addPreferenceMethods(
       )
     },
   }
-  client.session.preference = preferenceMethods as AppClient["session"]["preference"]
+  const session = client.session as unknown as Record<string, unknown>
+  const sessionProto = Object.getPrototypeOf(session) as Record<string, unknown> | null
+  const descriptor =
+    Object.getOwnPropertyDescriptor(session, "preference") ??
+    (sessionProto ? Object.getOwnPropertyDescriptor(sessionProto, "preference") : undefined)
+
+  if (descriptor?.get && !descriptor.set) {
+    const existing = session.preference
+    if (existing && typeof existing === "object") {
+      Object.assign(existing as Record<string, unknown>, preferenceMethods)
+    }
+    return client
+  }
+
+  ;(session as { preference: unknown }).preference = preferenceMethods as AppClient["session"]["preference"]
   return client
 }
 

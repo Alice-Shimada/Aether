@@ -1,4 +1,5 @@
 import { type Component, type JSXElement, For, Show, createMemo, createResource } from "solid-js"
+import { useParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
@@ -7,6 +8,7 @@ import type { Config } from "@opencode-ai/sdk/v2/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { useSync } from "@/context/sync"
 import { SettingsList } from "./settings-list"
 
 type MemoryScope = "current_project" | "global"
@@ -102,15 +104,28 @@ function asMemoryPayload(input: unknown): MemoryPayload {
 
 export const SettingsMemory: Component = () => {
   const sdk = useGlobalSDK()
-  const sync = useGlobalSync()
+  const globalSync = useGlobalSync()
+  const sync = useSync()
+  const params = useParams()
   const language = useLanguage()
 
-  const cfg = createMemo(() => readCfg(sync.data.config))
+  const cfg = createMemo(() => readCfg(globalSync.data.config))
+  const activeWorkspaceID = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return undefined
+    const value = sync.session.get(sessionID)?.workspaceID
+    if (typeof value !== "string") return undefined
+    const normalized = value.trim()
+    return normalized || undefined
+  })
 
   const [data, actions] = createResource(
-    () => sync.data.path.directory,
-    async (directory) => {
-      const client = sdk.createClient({ directory, throwOnError: true })
+    () => ({
+      directory: globalSync.data.path.directory,
+      workspaceID: activeWorkspaceID(),
+    }),
+    async ({ directory, workspaceID }) => {
+      const client = sdk.createClient({ directory, experimental_workspaceID: workspaceID, throwOnError: true })
       const result = await client.memory.get()
       return asMemoryPayload(result.data)
     },
@@ -133,9 +148,9 @@ export const SettingsMemory: Component = () => {
     const seq = ++updateSeq
     const memory = toMemoryPatch(patch)
     if (!Object.keys(memory).length) return
-    sync.set("config", "memory", (prev) => ({ ...(prev ?? {}), ...memory }))
+    globalSync.set("config", "memory", (prev) => ({ ...(prev ?? {}), ...memory }))
 
-    await sync
+    await globalSync
       .updateConfig({ memory })
       .then(async () => {
         if (seq !== updateSeq) return
@@ -143,7 +158,7 @@ export const SettingsMemory: Component = () => {
       })
       .catch((err: unknown) => {
         if (seq !== updateSeq) return
-        void sync.bootstrap().catch(() => undefined)
+        void globalSync.bootstrap().catch(() => undefined)
         void Promise.resolve(actions.refetch()).catch(() => undefined)
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })

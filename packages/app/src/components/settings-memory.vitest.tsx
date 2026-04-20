@@ -4,6 +4,10 @@ import { render } from "solid-js/web"
 const state = vi.hoisted(() => ({
   updateCalls: [] as unknown[],
   setMemory: undefined as ((value: Record<string, unknown>) => void) | undefined,
+  setPath: undefined as ((value: Record<string, unknown>) => void) | undefined,
+  createClientCalls: [] as Array<Record<string, unknown>>,
+  params: { id: "session-active-01" as string | undefined },
+  sessions: new Map<string, { workspaceID?: string }>(),
   updateMode: "immediate" as "immediate" | "deferred",
   pendingUpdates: [] as Array<{
     patch: Record<string, unknown>
@@ -26,33 +30,40 @@ vi.mock("@/context/language", () => ({
   }),
 }))
 
+vi.mock("@solidjs/router", () => ({
+  useParams: () => state.params,
+}))
+
 vi.mock("@/context/global-sdk", () => ({
   useGlobalSDK: () => ({
-    createClient: () => ({
-      memory: {
-        get: async () => ({
-          data: {
-            settings: {},
-            user: {
-              store: "user",
-              file: "/tmp/USER.md",
-              limit: 12000,
-              used: 0,
-              usage: 0,
-              entries: [],
+    createClient: (opts: Record<string, unknown>) => {
+      state.createClientCalls.push(opts)
+      return {
+        memory: {
+          get: async () => ({
+            data: {
+              settings: {},
+              user: {
+                store: "user",
+                file: "/tmp/USER.md",
+                limit: 12000,
+                used: 0,
+                usage: 0,
+                entries: [],
+              },
+              memory: {
+                store: "memory",
+                file: "/tmp/MEMORY.md",
+                limit: 12000,
+                used: 0,
+                usage: 0,
+                entries: [],
+              },
             },
-            memory: {
-              store: "memory",
-              file: "/tmp/MEMORY.md",
-              limit: 12000,
-              used: 0,
-              usage: 0,
-              entries: [],
-            },
-          },
-        }),
-      },
-    }),
+          }),
+        },
+      }
+    },
   }),
 }))
 
@@ -79,6 +90,9 @@ vi.mock("@/context/global-sync", async () => {
 
   state.setMemory = (value) => {
     setData("config", "memory", value)
+  }
+  state.setPath = (value) => {
+    setData("path", value as typeof data.path)
   }
 
   return {
@@ -119,6 +133,14 @@ vi.mock("@/context/global-sync", async () => {
     }),
   }
 })
+
+vi.mock("@/context/sync", () => ({
+  useSync: () => ({
+    session: {
+      get: (id: string) => state.sessions.get(id),
+    },
+  }),
+}))
 
 vi.mock("@opencode-ai/ui/button", () => ({
   Button: (props: { children?: unknown; onClick?: () => void }) => (
@@ -206,6 +228,7 @@ function mount() {
 beforeEach(() => {
   document.body.innerHTML = ""
   state.updateCalls = []
+  state.createClientCalls = []
   state.updateMode = "immediate"
   state.pendingUpdates = []
   state.bootstrapCalls = 0
@@ -223,6 +246,11 @@ beforeEach(() => {
     user_profile_enabled: true,
     user_profile_include_inferred: true,
   })
+  state.setPath?.({
+    directory: "/tmp/project",
+  })
+  state.params.id = "session-active-01"
+  state.sessions = new Map([["session-active-01", { workspaceID: "workspace-active-01" }]])
 })
 
 afterEach(() => {
@@ -230,6 +258,19 @@ afterEach(() => {
 })
 
 describe("settings memory", () => {
+  test("memory fetch includes active workspace id in createClient options", async () => {
+    const { off } = mount()
+    await Promise.resolve()
+    expect(state.createClientCalls.length).toBeGreaterThan(0)
+    const first = state.createClientCalls[0] ?? {}
+    expect(first).toMatchObject({
+      directory: "/tmp/project",
+      experimental_workspaceID: "workspace-active-01",
+      throwOnError: true,
+    })
+    off()
+  })
+
   test("changing scope does not break later memory updates", async () => {
     const { host, off } = mount()
 

@@ -1053,14 +1053,12 @@ export namespace Memory {
     const limit = Math.max(1, Math.min(20, input.limit ?? 6))
     const scope = input.scope ?? current.cross_session_search_scope
     const scoped = sessionScopeFilter(scope)
-    const tokenClause = tokens
-      .map(
-        () =>
-          "(lower(coalesce(json_extract(p.data, '$.text'), '')) like lower(?) or lower(coalesce(s.title, '')) like lower(?))",
-      )
-      .join(" or ")
+    const textClauseFor = (alias: string) =>
+      tokens.map(() => `lower(coalesce(json_extract(${alias}.data, '$.text'), '')) like lower(?)`).join(" or ")
+    const partTextClause = textClauseFor("p")
+    const subqueryTextClause = textClauseFor("p2")
     const titleClause = tokens.map(() => "lower(coalesce(s.title, '')) like lower(?)").join(" or ")
-    const tokenArgs = tokens.flatMap((token) => [`%${token}%`, `%${token}%`])
+    const textArgs = tokens.map((token) => `%${token}%`)
     const titleArgs = tokens.map((token) => `%${token}%`)
     const sql = [
       "select * from (",
@@ -1073,7 +1071,7 @@ export namespace Memory {
       "join session s on s.id = m.session_id",
       "where json_extract(p.data, '$.type') = 'text'",
       "and coalesce(json_extract(p.data, '$.metadata.memory_receipt'), 0) != 1",
-      `and (${tokenClause})`,
+      `and (${partTextClause})`,
       "and s.id != ?",
       "and s.time_archived is null",
       scoped.sql,
@@ -1094,6 +1092,7 @@ export namespace Memory {
       "  where m2.session_id = s.id",
       "  and json_extract(p2.data, '$.type') = 'text'",
       "  and coalesce(json_extract(p2.data, '$.metadata.memory_receipt'), 0) != 1",
+      `  and (${subqueryTextClause})`,
       ")",
       ") rows",
       "order by rows.updated_at desc, rows.created_at desc",
@@ -1103,12 +1102,13 @@ export namespace Memory {
       .join("\n")
 
     const rows = Database.Client().$client.prepare(sql).all(
-      ...tokenArgs,
+      ...textArgs,
       input.session_id,
       ...scoped.args,
       input.session_id,
       ...scoped.args,
       ...titleArgs,
+      ...textArgs,
       limit * 24,
     ) as Array<{
       session_id: string
@@ -1126,7 +1126,11 @@ export namespace Memory {
       if (receiptMark(row.memory_receipt)) continue
       const text = norm(row.text ?? "")
       const title = norm(row.title ?? "")
-      const matched = tokens.filter((token) => text.toLowerCase().includes(token) || title.toLowerCase().includes(token))
+      const lowText = text.toLowerCase()
+      const lowTitle = title.toLowerCase()
+      const textMatched = text ? tokens.filter((token) => lowText.includes(token)) : []
+      const titleMatched = title ? tokens.filter((token) => lowTitle.includes(token)) : []
+      const matched = [...new Set([...textMatched, ...titleMatched])]
       if (!matched.length) continue
 
       const keywords = keywordMatches.get(row.session_id) ?? new Set<string>()
@@ -1134,21 +1138,21 @@ export namespace Memory {
       keywordMatches.set(row.session_id, keywords)
 
       const existing = grouped.get(row.session_id)
-      const messageHits = text ? 1 : 0
+      const messageHits = textMatched.length > 0 ? 1 : 0
       if (!existing) {
         grouped.set(row.session_id, {
           session_id: row.session_id,
           title: row.title || "Untitled session",
           updated_at: row.updated_at,
           summary: "",
-          snippets: text ? [snippet(text, matched)].filter(Boolean) : [],
+          snippets: textMatched.length > 0 ? [snippet(text, textMatched)].filter(Boolean) : [],
           hits: messageHits,
         })
         continue
       }
       existing.hits += messageHits
-      if (text && existing.snippets.length < 3) {
-        const hit = snippet(text, matched)
+      if (textMatched.length > 0 && existing.snippets.length < 3) {
+        const hit = snippet(text, textMatched)
         if (hit && !existing.snippets.includes(hit)) existing.snippets.push(hit)
       }
     }

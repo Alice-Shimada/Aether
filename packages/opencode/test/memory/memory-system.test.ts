@@ -153,6 +153,50 @@ describe("memory + user profile backend", () => {
     })
   })
 
+  test("session_search title-only matches do not inflate hits from unrelated body text", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const appendText = async (sessionID: SessionID, text: string) => {
+          const messageID = MessageID.ascending()
+          await Session.updateMessage({
+            id: messageID,
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "build",
+            model: { providerID: ProviderID.opencode, modelID: ModelID.make("gpt-5") },
+          })
+          await Session.updatePart({
+            id: PartID.ascending(),
+            sessionID,
+            messageID,
+            type: "text",
+            text,
+          })
+        }
+
+        const target = await Session.create({ title: "Phoenix roadmap planning" })
+        await appendText(target.id, "Roadmap notes with no keyword hit in body text.")
+        await appendText(target.id, "Additional context that should not appear as matched snippet.")
+
+        const current = await Session.create({ title: "Current conversation" })
+        const hits = await Memory.sessionSearch({
+          session_id: current.id,
+          query: "phoenix",
+          scope: "current_project",
+        })
+
+        const match = hits.find((item) => item.session_id === target.id)
+        expect(match).toBeDefined()
+        expect(match?.hits).toBe(0)
+        expect(match?.snippets).toEqual([])
+        expect(match?.summary).toBe("Matched title across 1 keywords. Ordered by recency.")
+      },
+    })
+  })
+
   test("session_search title-only fallback includes sessions with receipt-only text parts", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

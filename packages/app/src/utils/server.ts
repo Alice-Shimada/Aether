@@ -186,11 +186,17 @@ export function addPreferenceMethods(
   options?: RequestHelperOptions,
 ): AppClient {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...auth }
-  client.session.preference = {
-    async get(input) {
+  const preferenceMethods = {
+    async get(input: { sessionID: string }) {
       return requestJSON(`${baseUrl}/session/${input.sessionID}/preference`, { headers }, options)
     },
-    async update(input) {
+    async update(input: {
+      sessionID: string
+      agent?: string
+      model?: { providerID: string; modelID: string }
+      variant?: string
+      autoAccept?: boolean
+    }) {
       const { sessionID, ...body } = input
       return requestJSON(
         `${baseUrl}/session/${sessionID}/preference`,
@@ -203,6 +209,7 @@ export function addPreferenceMethods(
       )
     },
   }
+  client.session.preference = preferenceMethods as AppClient["session"]["preference"]
   return client
 }
 

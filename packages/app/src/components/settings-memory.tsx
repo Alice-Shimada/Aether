@@ -8,7 +8,6 @@ import type { Config } from "@opencode-ai/sdk/v2/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
-import { useSync } from "@/context/sync"
 import { SettingsList } from "./settings-list"
 
 type MemoryScope = "current_project" | "global"
@@ -105,7 +104,6 @@ function asMemoryPayload(input: unknown): MemoryPayload {
 export const SettingsMemory: Component = () => {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
-  const sync = useSync()
   const params = useParams()
   const language = useLanguage()
 
@@ -113,7 +111,10 @@ export const SettingsMemory: Component = () => {
   const activeWorkspaceID = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
-    const value = sync.session.get(sessionID)?.workspaceID
+    const directory = globalSync.data.path.directory
+    if (!directory) return undefined
+    const [child] = globalSync.peek(directory, { bootstrap: false })
+    const value = child.session.find((item) => item.id === sessionID)?.workspaceID
     if (typeof value !== "string") return undefined
     const normalized = value.trim()
     return normalized || undefined

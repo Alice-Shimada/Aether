@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   setPath: undefined as ((value: Record<string, unknown>) => void) | undefined,
   createClientCalls: [] as Array<Record<string, unknown>>,
   params: { id: "session-active-01" as string | undefined },
-  sessions: new Map<string, { workspaceID?: string }>(),
+  sessionsByDirectory: new Map<string, Array<{ id: string; workspaceID?: string }>>(),
   updateMode: "immediate" as "immediate" | "deferred",
   pendingUpdates: [] as Array<{
     patch: Record<string, unknown>
@@ -99,6 +99,10 @@ vi.mock("@/context/global-sync", async () => {
     useGlobalSync: () => ({
       data,
       set: (...args: unknown[]) => (setData as (...input: unknown[]) => unknown)(...args),
+      peek: (directory: string) => {
+        const sessions = state.sessionsByDirectory.get(directory) ?? []
+        return [{ session: sessions }, vi.fn()] as const
+      },
       bootstrap: async () => {
         state.bootstrapCalls += 1
         setData("config", "memory", { ...(state.serverMemory as Record<string, unknown>) })
@@ -133,14 +137,6 @@ vi.mock("@/context/global-sync", async () => {
     }),
   }
 })
-
-vi.mock("@/context/sync", () => ({
-  useSync: () => ({
-    session: {
-      get: (id: string) => state.sessions.get(id),
-    },
-  }),
-}))
 
 vi.mock("@opencode-ai/ui/button", () => ({
   Button: (props: { children?: unknown; onClick?: () => void }) => (
@@ -250,7 +246,9 @@ beforeEach(() => {
     directory: "/tmp/project",
   })
   state.params.id = "session-active-01"
-  state.sessions = new Map([["session-active-01", { workspaceID: "workspace-active-01" }]])
+  state.sessionsByDirectory = new Map([
+    ["/tmp/project", [{ id: "session-active-01", workspaceID: "workspace-active-01" }]],
+  ])
 })
 
 afterEach(() => {

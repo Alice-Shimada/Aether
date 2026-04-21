@@ -52,6 +52,7 @@ import { IconButton } from "./icon-button"
 import { TextShimmer } from "./text-shimmer"
 import { AnimatedCountList } from "./tool-count-summary"
 import { ToolStatusTitle } from "./tool-status-title"
+import { Tag } from "./tag"
 import { animate } from "motion"
 import { useLocation } from "@solidjs/router"
 import { attached, inline, kind } from "./message-file"
@@ -1441,6 +1442,10 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     if (!(part().synthetic && metadata?.memory_receipt === true)) return raw
     return formatMemoryReceipt(raw, i18n)
   }
+  const isCron = createMemo(() => {
+    const metadata = part().metadata as Record<string, unknown> | undefined
+    return metadata?.source === "cron"
+  })
   const throttledText = createThrottledValue(displayText)
   const isLastTextPart = createMemo(() => {
     const last = (data.store.part?.[props.message.id] ?? [])
@@ -1467,6 +1472,11 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
   return (
     <Show when={throttledText()}>
       <div data-component="text-part">
+        <Show when={isCron()}>
+          <div class="mb-2">
+            <Tag>Cron</Tag>
+          </div>
+        </Show>
         <div data-slot="text-part-body">
           <Markdown text={throttledText()} cacheKey={part().id} />
         </div>
@@ -2312,14 +2322,14 @@ ToolRegistry.register({
     const i18n = useI18n()
     const dialog = useDialog()
     const pending = createMemo(() => props.status === "pending" || props.status === "running")
-    
+
     // Extract sources from metadata
     const sources = createMemo(() => {
       const meta = props.metadata
       if (!meta || !Array.isArray(meta.sources)) return []
       return meta.sources as string[]
     })
-    
+
     // Parse file:// links from output and convert to API URLs
     const sourceLinks = createMemo(() => {
       const output = props.output || ""

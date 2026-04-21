@@ -38,6 +38,16 @@ import {
   SessionReadTool,
   SessionSearchTool,
 } from "./memory"
+import {
+  CronCreateTool,
+  CronDeleteTool,
+  CronGetTool,
+  CronListTool,
+  CronRunNowTool,
+  CronRunsTool,
+  CronSetGlobalEnabledTool,
+  CronUpdateTool,
+} from "./cron"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
 import { Effect, Layer, ServiceMap } from "effect"
@@ -147,6 +157,14 @@ export namespace ToolRegistry {
           MemorySearchTool,
           MemoryReflectTool,
           ...(cfg.memory?.cross_session_search_enabled === false ? [] : [SessionSearchTool, SessionReadTool]),
+          CronListTool,
+          CronGetTool,
+          CronCreateTool,
+          CronUpdateTool,
+          CronDeleteTool,
+          CronRunNowTool,
+          CronRunsTool,
+          CronSetGlobalEnabledTool,
           KnowledgeTool,
           ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
           ...(cfg.experimental?.batch_tool === true ? [BatchTool] : []),

@@ -31,6 +31,52 @@ type MemoryStore = {
   usage: number
   entries: string[]
 }
+type CronMode = "direct" | "isolated_agent" | "session_agent" | "agent_message"
+type CronScheduleType = "cron" | "interval" | "once"
+type CronLastStatus = "success" | "failed" | "skipped" | "expired" | null
+type CronRunStatus = "success" | "failed" | "skipped"
+type CronTriggerReason = "scheduled" | "manual"
+type CronDefinition = {
+  id: string
+  name: string
+  enabled: boolean
+  mode: CronMode
+  project_id?: string | null
+  session_id?: string | null
+  schedule_type: CronScheduleType
+  schedule_value: string | number
+  timezone?: string | null
+  payload: Record<string, unknown>
+  [key: string]: unknown
+}
+type CronState = {
+  job_id: string
+  enabled: boolean
+  next_run_at: number | null
+  last_run_at: number | null
+  last_status: CronLastStatus
+  running: boolean
+  start_at: number | null
+  updated_at: number
+}
+type CronRun = {
+  run_id: string
+  job_id: string
+  started_at: number
+  finished_at: number
+  status: CronRunStatus
+  output_summary: string | null
+  mode: CronMode
+  project_id: string | null
+  session_id: string | null
+  created_session_id: string | null
+  payload_snapshot: Record<string, unknown>
+  trigger_reason: CronTriggerReason
+}
+type CronJobView = {
+  definition: CronDefinition
+  state: CronState | null
+}
 
 type RequestHelperOptions = {
   throwOnError?: boolean
@@ -87,6 +133,18 @@ export type AppClient = Base & {
       user: MemoryStore
       memory: MemoryStore
     }>
+  }
+  cron: {
+    jobs: {
+      list(): Req<CronJobView[]>
+      get(input: { id: string }): Req<CronJobView>
+      run(input: { id: string }): Req<CronRun>
+      runs(input: { id: string; count?: number }): Req<CronRun[]>
+      delete(input: { id: string }): Req<{ ok: true; job_id: string; definition: CronDefinition }>
+    }
+    runs: {
+      get(input: { runID: string }): Req<CronRun | null>
+    }
   }
   config: Base["config"] & {
     skills: {
@@ -245,6 +303,57 @@ export function addMemoryMethods(
   client.memory = {
     async get() {
       return requestJSON(`${baseUrl}/memory`, { headers }, options)
+    },
+  }
+  return client
+}
+
+export function addCronMethods(
+  client: AppClient,
+  baseUrl: string,
+  auth?: Record<string, string>,
+  options?: RequestHelperOptions,
+): AppClient {
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...auth }
+  client.cron = {
+    jobs: {
+      async list() {
+        return requestJSON(`${baseUrl}/cron/jobs`, { headers }, options)
+      },
+      async get(input: { id: string }) {
+        return requestJSON(`${baseUrl}/cron/jobs/${input.id}`, { headers }, options)
+      },
+      async run(input: { id: string }) {
+        return requestJSON(
+          `${baseUrl}/cron/jobs/${input.id}/run`,
+          {
+            method: "POST",
+            headers,
+          },
+          options,
+        )
+      },
+      async runs(input: { id: string; count?: number }) {
+        const search = new URLSearchParams()
+        if (input.count !== undefined) search.set("count", String(input.count))
+        const suffix = search.toString() ? `?${search}` : ""
+        return requestJSON(`${baseUrl}/cron/jobs/${input.id}/runs${suffix}`, { headers }, options)
+      },
+      async delete(input: { id: string }) {
+        return requestJSON(
+          `${baseUrl}/cron/jobs/${input.id}`,
+          {
+            method: "DELETE",
+            headers,
+          },
+          options,
+        )
+      },
+    },
+    runs: {
+      async get(input: { runID: string }) {
+        return requestJSON(`${baseUrl}/cron/runs/${input.runID}`, { headers }, options)
+      },
     },
   }
   return client

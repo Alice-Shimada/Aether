@@ -701,6 +701,7 @@ export namespace Config {
           webfetch: PermissionAction.optional(),
           websearch: PermissionAction.optional(),
           codesearch: PermissionAction.optional(),
+          cron: PermissionRule.optional(),
           lsp: PermissionRule.optional(),
           doom_loop: PermissionAction.optional(),
           skill: PermissionRule.optional(),
@@ -1252,6 +1253,11 @@ export namespace Config {
             .boolean()
             .optional()
             .describe("Allow inferred profile generation/injection (default: true)"),
+        })
+        .optional(),
+      cron: z
+        .object({
+          enabled: z.boolean().optional().describe("Enable cron job execution (default: true)"),
         })
         .optional(),
       experimental: z

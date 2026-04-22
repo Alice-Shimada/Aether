@@ -17,11 +17,13 @@ type Kb = {
 }
 type MemoryScope = "current_project" | "global"
 type MemorySettings = {
+  enabled: boolean
   cross_session_search_enabled: boolean
   cross_session_search_scope: MemoryScope
-  memory_reflection_enabled: boolean
-  user_profile_enabled: boolean
-  user_profile_include_inferred: boolean
+  memory_reflection_model?: {
+    providerID: string
+    modelID: string
+  }
 }
 type MemoryStore = {
   store: "user" | "memory"
@@ -30,6 +32,25 @@ type MemoryStore = {
   used: number
   usage: number
   entries: string[]
+}
+type ActiveMemory = {
+  session_id: string
+  prompt: string
+  entries: Array<{
+    source: "user" | "memory" | "daily" | "session"
+    store?: "user" | "memory"
+    index: number
+    text: string
+  }>
+}
+type DailyMemory = {
+  root: string
+  days: Array<{
+    date: string
+    file: string
+    entries: string[]
+    invalid_entries: number
+  }>
 }
 type CronMode = "direct" | "isolated_agent" | "session_agent" | "agent_message"
 type CronScheduleType = "cron" | "interval" | "once"
@@ -128,10 +149,12 @@ async function requestJSON<T>(url: string, init: RequestInit, options?: RequestH
 }
 export type AppClient = Base & {
   memory: {
-    get(): Req<{
+    get(input?: { sessionID?: string }): Req<{
       settings: MemorySettings
       user: MemoryStore
       memory: MemoryStore
+      daily: DailyMemory
+      active?: ActiveMemory
     }>
   }
   cron: {
@@ -301,8 +324,11 @@ export function addMemoryMethods(
     headers["x-opencode-workspace"] = opts.experimental_workspaceID
   }
   client.memory = {
-    async get() {
-      return requestJSON(`${baseUrl}/memory`, { headers }, options)
+    async get(input?: { sessionID?: string }) {
+      const params = new URLSearchParams()
+      if (input?.sessionID) params.set("session_id", input.sessionID)
+      const suffix = params.size ? `?${params.toString()}` : ""
+      return requestJSON(`${baseUrl}/memory${suffix}`, { headers }, options)
     },
   }
   return client

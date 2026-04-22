@@ -1,128 +1,92 @@
 # Aether 记忆系统（当前实现）
 
-本文只描述当前代码实现（`packages/opencode` + `packages/app`），不包含已移除或未落地设计。
+本文只描述当前已落地实现。
 
-## 1. 系统概览
+## 1. 三层缓存
 
-当前采用双仓模型：
+- L1：active memory prompt。只有被自动召回、`memory_search` 命中、或本轮 `memory_write` 写入的条目会进入模型 system prompt，约 4000 字符上限。
+- L2：session memory pool。会话启动时从磁盘准备，但默认不注入；`memory_search` 只查这一层。
+- L3：磁盘冷存储。包含 `USER.md`、daily memory、当前 session short-term memory、reflection run log。
 
-- `MEMORY`：项目/工作区相关的持久事实
-- `USER`：用户画像条目（偏好/约束/能力等）
+## 2. 磁盘路径
 
-主代理自行决定何时调用工具写入与检索，不存在单独的“记忆管理模型路由”热路径。
+- 用户画像：`memory/user/USER.md`
+- 每日长期记忆：`memory/daily/YYYY-MM-DD/MEMORY.md`
+- 当前会话短期记忆：`memory/session/<session_id>/MEMORY.md`
+- 反思日志：`memory/reflection/run/<run_id>.json`
 
-## 2. 持久化与作用域
+旧的 `memory/scope/<scopeKey>/MEMORY.md` 和 `ABSTRACT.md` 已废弃，新的 L2 pool 不再读取这些路径。
 
-- 存储位置在 Aether data 目录（非项目仓库文件）：
-  - `USER`：`.../memory/user/USER.md`（全局）
-  - `MEMORY`：`.../memory/scope/<scopeKey>/MEMORY.md`（作用域）
-- `scopeKey` 规则：
-  - 有 `workspaceID`：`workspace-<id>`
-  - 否则若项目非 global：`project-<projectID>`
-  - 否则：按工作目录绝对路径 hash（`directory-<sha1前缀>`）
-- 当前容量上限：
-  - `USER`：12000（按条目拼接文本长度计）
-  - `MEMORY`：12000
-- 单条长度限制：
-  - `USER`：200 字符（内容部分）
-  - `MEMORY`：300 字符
+## 3. 条目格式
 
-## 3. 设置面（Settings > Memory）
+`USER.md` 与 daily memory 统一使用：
 
-当前仅有以下设置（默认值见代码）：
+```text
+kind[source]: content
+```
 
-- `cross_session_search_enabled`（默认 `true`）
-- `cross_session_search_scope`：`current_project | global`（默认 `current_project`）
-- `memory_reflection_enabled`（默认 `true`）
-- `user_profile_enabled`（默认 `true`）
-- `user_profile_include_inferred`（默认 `true`）
+- `kind`：`fact | preference | task`
+- `USER.md` 的 `source`：`explicit | inferred`
+- daily memory 的 `source`：只写 `explicit`
 
-已移除的旧设计项（当前实现不存在）：
+## 4. 会话工作流
 
+- 会话启动时只构建 L2 pool，不全量注入长期记忆。
+- 每轮模型调用前，会根据最新用户消息执行最多 5 条自动召回。
+- `memory_search` 支持常见分隔符拆分多个关键词，任意关键词命中即候选。
+- 搜索命中会静默加入 L1，并在本 session 后续持续注入。
+- `memory_reload` 会重新读取 L2，并清空 L1 active memory。
+
+## 5. 写入与反思
+
+- `memory_write` 永远写入当前 session short-term memory，不直接修改 `USER.md` 或 daily memory。
+- 如果用户要求长期记住，agent 应把这个意图写进 short-term memory。
+- `memory_reflect` 会调用 LLM，将 short-term memory 整理为 daily memory，并对 `USER.md` 生成 add/replace/remove patch。
+- daily cron 会每天触发一次 `memory_reflect`，没有当天 short-term memory 时跳过并写入 skipped run log。
+
+## 6. 配置
+
+当前有效字段：
+
+- `memory.enabled`：启用记忆工具、召回与内置 daily reflection cron，默认 `true`。
+- `memory.cross_session_search_enabled`：启用 `session_search`，默认 `true`。
+- `memory.cross_session_search_scope`：`current_project | global`，默认 `current_project`。
+- `memory.memory_reflection_model`：可选，指定 reflection 使用的模型。
+
+已废弃字段会在配置加载时清理：
+
+- `memory_reflection_enabled`
+- `user_profile_enabled`
+- `user_profile_include_inferred`
 - `memory_management_model`
 - `user_profile_history_extract_enabled`
 - `user_profile_history_extract_limit`
 
-## 4. 工具面与后端能力
+## 7. Cron 集成
 
-已注册工具（当前实现）：
+服务启动时会确保存在可编辑、可删除后重建的内置 job：
 
-- `memory_write`（`add | replace | remove`）
-- `memory_read`
-- `memory_list`
-- `memory_search`
-- `memory_reflect`（`light | strong`，可指定仓）
-- `session_search`
-- `session_read`
-
-另外，`GET /memory` 返回只读快照：
-
-- `settings`
-- `user` 仓状态
-- `memory` 仓状态
-
-## 5. USER 条目格式与注入优先级
-
-`USER` 条目严格格式：
-
-```text
-type[source]: content
+```json
+{
+  "id": "builtin-memory-reflection-daily",
+  "name": "Daily memory reflection",
+  "mode": "direct",
+  "schedule_type": "cron",
+  "schedule_value": "0 3 * * *",
+  "payload": {
+    "action": "memory_reflect",
+    "scope": "global",
+    "dry_run": false,
+    "trigger": "cron"
+  }
+}
 ```
 
-- `type`：`style | workflow | preference | constraint | capability`
-- `source`：`explicit | inferred`
-- `inferred` 仅允许 `style | preference | capability`
+## 8. 前端展示
 
-会话启动时会生成并冻结 memory snapshot，注入系统提示，用户画像优先级明确为：
+Settings > Memory 展示：
 
-1. 当前轮用户指令优先级最高。
-2. 未被当前轮覆盖时，`explicit` 作为强 standing instructions / preferences。
-3. `inferred` 仅作为弱提示，且不得与前两者冲突。
-
-当 `user_profile_include_inferred=false` 时，`inferred` 仍可留在磁盘仓，但不会注入快照提示。
-
-## 6. 写入、安全与反思
-
-`memory_write` 流程要点：
-
-- 安全扫描拦截：prompt injection、secret、exfiltration、不可见字符
-- 去重/规范化后执行轻量反思；超容量时触发强反思（merge/compact）
-- 仍超限则阻断写入（`capacity_limit`）
-- 若最终无实质变化，返回 `noop` 事件（不会伪报成功新增）
-
-反思机制：
-
-- 会话首次 `snapshot` 时对 `MEMORY`、`USER` 执行启动强反思（按开关）
-- 成功写入后自动轻反思（按开关）
-- 可由主代理显式调用 `memory_reflect` 主动触发
-
-## 7. 跨会话检索与读取
-
-### 7.1 `session_search`
-
-- 按分隔符分词（空白、`,，;；/|、`），去空、去重
-- 单条 SQL（含文本分支 + title-only 回退分支）
-- 支持命中：
-  - 消息文本（排除 memory receipt 文本）
-  - 会话标题
-- title-only 回退支持“无真实文本”会话（包括仅 receipt 文本 part 的会话）
-- 输出按会话聚合：每会话一条，snippets 最多 3 条
-- 排序：先 `updated_at` 降序，再 `hits` 降序
-
-### 7.2 `session_read`
-
-- 仅分页读取指定会话完整消息（按 message 分页，不按字符）
-- 需显式授权：只有用户明确请求“完整/原文/全量历史”后可读第一页
-- continuation（如 next page / continue）仅对同一 target session 延续有效
-
-## 8. 回执与可见性
-
-后端提供 `Memory.format(events)`：
-
-- 分段输出 `Memory updates` 与 `Memory failures`
-- 每段最多展示 5 条，超出给出剩余计数
-
-前端 Memory 页面提供只读仓视图：
-
-- `MEMORY` 仓原样列表
-- `USER` 仓按 `explicit / inferred` 分组展示
+- 总开关、跨会话搜索开关、跨会话搜索范围。
+- 当前 session 的 L1 active memory 与 prompt preview。
+- `USER.md`，按 explicit/inferred 分组。
+- 最近 30 个有 daily memory 的日期，倒序展示。

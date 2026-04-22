@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   setMemory: undefined as ((value: Record<string, unknown>) => void) | undefined,
   setPath: undefined as ((value: Record<string, unknown>) => void) | undefined,
   createClientCalls: [] as Array<Record<string, unknown>>,
+  memoryGetCalls: [] as Array<Record<string, unknown> | undefined>,
   params: { id: "session-active-01" as string | undefined },
   sessionsByDirectory: new Map<string, Array<{ id: string; workspaceID?: string }>>(),
   updateMode: "immediate" as "immediate" | "deferred",
@@ -16,11 +17,9 @@ const state = vi.hoisted(() => ({
   }>,
   bootstrapCalls: 0,
   serverMemory: {
+    enabled: true,
     cross_session_search_enabled: true,
     cross_session_search_scope: "current_project",
-    memory_reflection_enabled: true,
-    user_profile_enabled: true,
-    user_profile_include_inferred: true,
   } as Record<string, unknown>,
 }))
 
@@ -40,27 +39,39 @@ vi.mock("@/context/global-sdk", () => ({
       state.createClientCalls.push(opts)
       return {
         memory: {
-          get: async () => ({
-            data: {
-              settings: {},
-              user: {
-                store: "user",
-                file: "/tmp/USER.md",
-                limit: 12000,
-                used: 0,
-                usage: 0,
-                entries: [],
+          get: async (input?: Record<string, unknown>) => {
+            state.memoryGetCalls.push(input)
+            return {
+              data: {
+                settings: {},
+                user: {
+                  store: "user",
+                  file: "/tmp/USER.md",
+                  limit: 12000,
+                  used: 0,
+                  usage: 0,
+                  entries: [],
+                },
+                memory: {
+                  store: "memory",
+                  file: "/tmp/memory/daily",
+                  limit: 12000,
+                  used: 0,
+                  usage: 0,
+                  entries: [],
+                },
+                daily: {
+                  root: "/tmp/memory/daily",
+                  days: [],
+                },
+                active: {
+                  session_id: "session-active-01",
+                  prompt: "<memory_context>\n- active-note\n</memory_context>",
+                  entries: [{ source: "session", index: 1, text: "active-note" }],
+                },
               },
-              memory: {
-                store: "memory",
-                file: "/tmp/MEMORY.md",
-                limit: 12000,
-                used: 0,
-                usage: 0,
-                entries: [],
-              },
-            },
-          }),
+            }
+          },
         },
       }
     },
@@ -71,11 +82,9 @@ vi.mock("@/context/global-sync", async () => {
   const { createStore } = await import("solid-js/store")
 
   const initialMemory = {
+    enabled: true,
     cross_session_search_enabled: true,
     cross_session_search_scope: "current_project",
-    memory_reflection_enabled: true,
-    user_profile_enabled: true,
-    user_profile_include_inferred: true,
   }
   state.serverMemory = { ...initialMemory }
 
@@ -225,22 +234,19 @@ beforeEach(() => {
   document.body.innerHTML = ""
   state.updateCalls = []
   state.createClientCalls = []
+  state.memoryGetCalls = []
   state.updateMode = "immediate"
   state.pendingUpdates = []
   state.bootstrapCalls = 0
   state.serverMemory = {
+    enabled: true,
     cross_session_search_enabled: true,
     cross_session_search_scope: "current_project",
-    memory_reflection_enabled: true,
-    user_profile_enabled: true,
-    user_profile_include_inferred: true,
   }
   state.setMemory?.({
+    enabled: true,
     cross_session_search_enabled: true,
     cross_session_search_scope: "current_project",
-    memory_reflection_enabled: true,
-    user_profile_enabled: true,
-    user_profile_include_inferred: true,
   })
   state.setPath?.({
     directory: "/tmp/project",
@@ -256,7 +262,7 @@ afterEach(() => {
 })
 
 describe("settings memory", () => {
-  test("memory fetch includes active workspace id in createClient options", async () => {
+  test("memory fetch uses active session workspace and requests L1 active memory", async () => {
     const { off } = mount()
     await Promise.resolve()
     expect(state.createClientCalls.length).toBeGreaterThan(0)
@@ -266,6 +272,7 @@ describe("settings memory", () => {
       experimental_workspaceID: "workspace-active-01",
       throwOnError: true,
     })
+    expect(state.memoryGetCalls[0]).toEqual({ sessionID: "session-active-01" })
     off()
   })
 
@@ -279,7 +286,7 @@ describe("settings memory", () => {
     scopeButton.click()
 
     const switches = [...host.querySelectorAll('[data-switch="true"]')] as HTMLButtonElement[]
-    expect(switches.length).toBeGreaterThanOrEqual(3)
+    expect(switches.length).toBeGreaterThanOrEqual(2)
     switches[1].click()
 
     expect(state.updateCalls).toHaveLength(2)
@@ -290,7 +297,7 @@ describe("settings memory", () => {
     })
     expect(state.updateCalls[1]).toEqual({
       memory: expect.objectContaining({
-        memory_reflection_enabled: false,
+        cross_session_search_enabled: false,
       }),
     })
 
@@ -307,7 +314,7 @@ describe("settings memory", () => {
     scopeButton.click()
 
     const switches = [...host.querySelectorAll('[data-switch="true"]')] as HTMLButtonElement[]
-    expect(switches.length).toBeGreaterThanOrEqual(3)
+    expect(switches.length).toBeGreaterThanOrEqual(2)
     switches[1].click()
     expect(state.updateCalls).toHaveLength(2)
     expect(state.pendingUpdates.length).toBe(2)

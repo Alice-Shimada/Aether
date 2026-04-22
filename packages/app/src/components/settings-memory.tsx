@@ -12,14 +12,12 @@ import { SettingsList } from "./settings-list"
 
 type MemoryScope = "current_project" | "global"
 type UserProfileSource = "explicit" | "inferred"
-type UserProfileType = "style" | "workflow" | "preference" | "constraint" | "capability"
+type UserProfileType = "fact" | "preference" | "task"
 
 type MemoryCfg = {
+  enabled: boolean
   cross_session_search_enabled: boolean
   cross_session_search_scope: MemoryScope
-  memory_reflection_enabled: boolean
-  user_profile_enabled: boolean
-  user_profile_include_inferred: boolean
 }
 
 type MemoryStore = {
@@ -31,13 +29,36 @@ type MemoryStore = {
   entries: string[]
 }
 
+type ActiveMemory = {
+  session_id: string
+  prompt: string
+  entries: Array<{
+    source: "user" | "memory" | "daily" | "session"
+    store?: "user" | "memory"
+    index: number
+    text: string
+  }>
+}
+
+type DailyMemory = {
+  root: string
+  days: Array<{
+    date: string
+    file: string
+    entries: string[]
+    invalid_entries: number
+  }>
+}
+
 type MemoryPayload = {
   settings: MemoryCfg
   user: MemoryStore
   memory: MemoryStore
+  daily: DailyMemory
+  active?: ActiveMemory
 }
 
-const userProfileTypes = new Set<UserProfileType>(["style", "workflow", "preference", "constraint", "capability"])
+const userProfileTypes = new Set<UserProfileType>(["fact", "preference", "task"])
 
 function readBool(input: Record<string, unknown>, key: string, fallback: boolean) {
   const value = input[key]
@@ -50,11 +71,9 @@ function readCfg(input: Config): MemoryCfg {
   const root = input as Record<string, unknown>
   const src = (typeof root.memory === "object" && root.memory ? root.memory : {}) as Record<string, unknown>
   return {
+    enabled: readBool(src, "enabled", true),
     cross_session_search_enabled: readBool(src, "cross_session_search_enabled", true),
     cross_session_search_scope: src.cross_session_search_scope === "global" ? "global" : "current_project",
-    memory_reflection_enabled: readBool(src, "memory_reflection_enabled", true),
-    user_profile_enabled: readBool(src, "user_profile_enabled", true),
-    user_profile_include_inferred: readBool(src, "user_profile_include_inferred", true),
   }
 }
 
@@ -79,15 +98,13 @@ function splitUserEntries(entries: string[]) {
 }
 
 function toMemoryPatch(patch: Partial<MemoryCfg>): Partial<NonNullable<Config["memory"]>> {
-  const next: Partial<NonNullable<Config["memory"]>> = {}
+  const next: Record<string, unknown> = {}
 
   if ("cross_session_search_enabled" in patch) next.cross_session_search_enabled = patch.cross_session_search_enabled
   if ("cross_session_search_scope" in patch) next.cross_session_search_scope = patch.cross_session_search_scope
-  if ("memory_reflection_enabled" in patch) next.memory_reflection_enabled = patch.memory_reflection_enabled
-  if ("user_profile_enabled" in patch) next.user_profile_enabled = patch.user_profile_enabled
-  if ("user_profile_include_inferred" in patch) next.user_profile_include_inferred = patch.user_profile_include_inferred
+  if ("enabled" in patch) next.enabled = patch.enabled
 
-  return next
+  return next as Partial<NonNullable<Config["memory"]>>
 }
 
 function asMemoryPayload(input: unknown): MemoryPayload {
@@ -98,6 +115,7 @@ function asMemoryPayload(input: unknown): MemoryPayload {
   if (!payload.settings || typeof payload.settings !== "object") throw new Error("Invalid memory settings payload")
   if (!user || !Array.isArray(user.entries)) throw new Error("Invalid USER store payload")
   if (!memory || !Array.isArray(memory.entries)) throw new Error("Invalid MEMORY store payload")
+  if (!payload.daily || !Array.isArray(payload.daily.days)) throw new Error("Invalid daily memory payload")
   return payload as MemoryPayload
 }
 
@@ -108,8 +126,12 @@ export const SettingsMemory: Component = () => {
   const language = useLanguage()
 
   const cfg = createMemo(() => readCfg(globalSync.data.config))
+  const activeSessionID = createMemo(() => {
+    const value = params.id?.trim()
+    return value || undefined
+  })
   const activeWorkspaceID = createMemo(() => {
-    const sessionID = params.id
+    const sessionID = activeSessionID()
     if (!sessionID) return undefined
     const directory = globalSync.data.path.directory
     if (!directory) return undefined
@@ -123,11 +145,12 @@ export const SettingsMemory: Component = () => {
   const [data, actions] = createResource(
     () => ({
       directory: globalSync.data.path.directory,
+      sessionID: activeSessionID(),
       workspaceID: activeWorkspaceID(),
     }),
-    async ({ directory, workspaceID }) => {
+    async ({ directory, sessionID, workspaceID }) => {
       const client = sdk.createClient({ directory, experimental_workspaceID: workspaceID, throwOnError: true })
-      const result = await client.memory.get()
+      const result = await client.memory.get({ sessionID })
       return asMemoryPayload(result.data)
     },
   )
@@ -139,8 +162,6 @@ export const SettingsMemory: Component = () => {
         { value: "global", label: language.t("settings.memory.scope.global") },
       ] satisfies Array<{ value: MemoryScope; label: string }>,
   )
-
-  const profileEnabled = createMemo(() => cfg().user_profile_enabled)
 
   const profileEntries = createMemo(() => splitUserEntries(data()?.user.entries ?? []))
 
@@ -185,6 +206,12 @@ export const SettingsMemory: Component = () => {
           </div>
           <SettingsList>
             <Row
+              title={language.t("settings.memory.row.enabled.title")}
+              description={language.t("settings.memory.row.enabled.description")}
+            >
+              <Switch checked={cfg().enabled} onChange={(value) => void update({ enabled: value })} />
+            </Row>
+            <Row
               title={language.t("settings.memory.row.crossSessionEnabled.title")}
               description={language.t("settings.memory.row.crossSessionEnabled.description")}
             >
@@ -209,26 +236,24 @@ export const SettingsMemory: Component = () => {
                 triggerVariant="settings"
               />
             </Row>
-            <Row
-              title={language.t("settings.memory.row.reflection.title")}
-              description={language.t("settings.memory.row.reflection.description")}
-            >
-              <Switch
-                checked={cfg().memory_reflection_enabled}
-                onChange={(value) => void update({ memory_reflection_enabled: value })}
-              />
-            </Row>
           </SettingsList>
+          <Show when={data()?.active}>
+            {(active) => (
+              <div class="pt-3">
+                <ActiveMemoryCard
+                  title={language.t("settings.memory.store.activeSession")}
+                  description={language.t("settings.memory.store.activeSession.description")}
+                  sessionID={active().session_id}
+                  prompt={active().prompt}
+                  entries={active().entries}
+                />
+              </div>
+            )}
+          </Show>
           <Show when={data()}>
             {(value) => (
               <div class="pt-3">
-                <StoreCard
-                  title={language.t("settings.memory.store.memory")}
-                  used={value().memory.used}
-                  limit={value().memory.limit}
-                  file={value().memory.file}
-                  entries={value().memory.entries}
-                />
+                <DailyMemoryCard title={language.t("settings.memory.store.daily")} daily={value().daily} />
               </div>
             )}
           </Show>
@@ -236,29 +261,7 @@ export const SettingsMemory: Component = () => {
 
         <div class="flex flex-col gap-1">
           <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.memory.section.userProfile")}</h3>
-          <SettingsList>
-            <Row
-              title={language.t("settings.memory.row.userProfileEnabled.title")}
-              description={language.t("settings.memory.row.userProfileEnabled.description")}
-            >
-              <Switch checked={profileEnabled()} onChange={(value) => void update({ user_profile_enabled: value })} />
-            </Row>
-            <Row
-              title={language.t("settings.memory.row.includeInferred.title")}
-              description={language.t("settings.memory.row.includeInferred.description")}
-            >
-              <Switch
-                disabled={!profileEnabled()}
-                checked={cfg().user_profile_include_inferred}
-                onChange={(value) => void update({ user_profile_include_inferred: value })}
-              />
-            </Row>
-          </SettingsList>
-
-          <Show when={!profileEnabled()}>
-            <div class="pt-3 text-12-regular text-text-weak">{language.t("settings.memory.userProfile.disabledHint")}</div>
-          </Show>
-          <Show when={profileEnabled() && data()}>
+          <Show when={data()}>
             {(value) => (
               <div class="pt-3">
                 <StoreCard
@@ -372,6 +375,84 @@ const StoreCard: Component<{
           </div>
         )}
       </Show>
+    </div>
+  )
+}
+
+const DailyMemoryCard: Component<{
+  title: string
+  daily: DailyMemory
+}> = (props) => {
+  return (
+    <div class="rounded-lg border border-border-weak-base bg-surface-raised-base p-4">
+      <div class="flex flex-col gap-0.5 pb-3">
+        <span class="text-14-medium text-text-strong">{props.title}</span>
+        <span class="text-12-regular text-text-weak">Recent {props.daily.days.length} active day(s)</span>
+        <span class="text-12-regular text-text-dim truncate">{props.daily.root}</span>
+      </div>
+      <Show
+        when={props.daily.days.length > 0}
+        fallback={<span class="text-12-regular text-text-weak">- (empty)</span>}
+      >
+        <div class="flex flex-col gap-4">
+          <For each={props.daily.days}>
+            {(day) => (
+              <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-12-medium text-text-weak uppercase tracking-[0.04em]">{day.date}</span>
+                  <span class="text-12-regular text-text-dim truncate">{day.file}</span>
+                </div>
+                <For each={day.entries}>
+                  {(entry, idx) => (
+                    <div class="text-12-regular text-text-base">
+                      {idx() + 1}. {entry}
+                    </div>
+                  )}
+                </For>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
+const ActiveMemoryCard: Component<{
+  title: string
+  description: string
+  sessionID: string
+  prompt: string
+  entries: ActiveMemory["entries"]
+}> = (props) => {
+  return (
+    <div class="rounded-lg border border-border-weak-base bg-surface-raised-base p-4">
+      <div class="flex flex-col gap-0.5 pb-3">
+        <span class="text-14-medium text-text-strong">{props.title}</span>
+        <span class="text-12-regular text-text-weak">{props.description}</span>
+        <span class="text-12-regular text-text-dim truncate">session: {props.sessionID}</span>
+      </div>
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-2">
+          <span class="text-12-medium text-text-weak uppercase tracking-[0.04em]">Active entries</span>
+          <Show
+            when={props.entries.length > 0}
+            fallback={<span class="text-12-regular text-text-weak">- (empty)</span>}
+          >
+            <For each={props.entries}>
+              {(entry, idx) => (
+                <div class="text-12-regular text-text-base">
+                  {idx() + 1}. [{entry.source}] {entry.text}
+                </div>
+              )}
+            </For>
+          </Show>
+        </div>
+        <details class="rounded-md border border-border-weak-base bg-surface-base p-3">
+          <summary class="cursor-pointer text-12-medium text-text-weak">Prompt preview</summary>
+          <pre class="mt-2 whitespace-pre-wrap break-words text-12-regular text-text-base">{props.prompt}</pre>
+        </details>
+      </div>
     </div>
   )
 }

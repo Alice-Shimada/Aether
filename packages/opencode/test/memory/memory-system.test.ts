@@ -8,18 +8,21 @@ import { ModelID, ProviderID } from "../../src/provider/schema"
 import { Filesystem } from "../../src/util/filesystem"
 import type { Config } from "../../src/config/config"
 
+function todayKey() {
+  const date = new Date()
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset())
+  return date.toISOString().slice(0, 10)
+}
+
 describe("memory + user profile backend", () => {
   test("keeps current_project isolation for non-git directories", async () => {
     await using left = await tmpdir()
     await using right = await tmpdir()
 
     let leftSessionID = ""
-    let leftMemoryFile = ""
-
     await Instance.provide({
       directory: left.path,
       fn: async () => {
-        leftMemoryFile = (await Memory.read("memory")).file
         await Memory.write({
           session_id: "left_scope",
           store: "memory",
@@ -53,7 +56,6 @@ describe("memory + user profile backend", () => {
       directory: right.path,
       fn: async () => {
         const rightMemory = await Memory.read("memory")
-        expect(rightMemory.file).not.toBe(leftMemoryFile)
         expect(rightMemory.entries).not.toContain("Left workspace specific memory")
 
         const current = await Session.create({})
@@ -238,13 +240,12 @@ describe("memory + user profile backend", () => {
     })
   })
 
-  test("enforces strict USER format and inferred constraints", async () => {
+  test("memory_write records natural-language notes in short-term session memory", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
         memory: {
-          user_profile_enabled: true,
-          user_profile_include_inferred: true,
+          enabled: true,
         },
       } as Partial<Config.Info>,
     })
@@ -252,45 +253,30 @@ describe("memory + user profile backend", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
+        const sessionID = "short_term_profile_note"
         const ok = await Memory.write({
-          session_id: "user_format_ok",
+          session_id: sessionID,
           store: "user",
           action: "add",
-          value: "style[explicit]: 中文，先结论后展开",
+          value: "用户希望长期记住：默认用中文回答，先结论后展开。",
           reason: "manual",
         })
         expect(ok.ok).toBe(true)
+        if (!ok.ok) throw new Error("expected memory write to succeed")
+        expect(ok.session.entries).toContain("用户希望长期记住：默认用中文回答，先结论后展开。")
 
-        const invalidFormat = await Memory.write({
-          session_id: "user_format_bad",
-          store: "user",
-          action: "add",
-          value: "用户偏好中文回答",
-          reason: "manual",
-        })
-        expect(invalidFormat.ok).toBe(false)
-        expect(invalidFormat.events[0]?.reason).toBe("invalid_user_format")
-
-        const invalidInferred = await Memory.write({
-          session_id: "user_format_bad2",
-          store: "user",
-          action: "add",
-          value: "workflow[inferred]: 先确认再实现",
-          reason: "manual",
-        })
-        expect(invalidInferred.ok).toBe(false)
-        expect(invalidInferred.events[0]?.reason).toBe("invalid_inferred_type")
+        const prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("用户希望长期记住：默认用中文回答，先结论后展开。")
       },
     })
   })
 
-  test("disables USER store entirely when user_profile_enabled=false", async () => {
+  test("disables memory stores and writes when memory.enabled=false", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
         memory: {
-          user_profile_enabled: false,
-          user_profile_include_inferred: true,
+          enabled: false,
         },
       } as Partial<Config.Info>,
     })
@@ -302,15 +288,19 @@ describe("memory + user profile backend", () => {
         expect(userStore.enabled).toBe(false)
         expect(userStore.entries).toEqual([])
 
+        await Memory.start({ session_id: "disabled_old_active" })
+        const activeBefore = await Memory.activePrompt({ session_id: "disabled_old_active" })
+        expect(activeBefore.prompt).toBe("")
+
         const blocked = await Memory.write({
           session_id: "user_disabled",
           store: "user",
           action: "add",
-          value: "style[explicit]: 中文",
+          value: "preference[explicit]: 中文",
           reason: "manual",
         })
         expect(blocked.ok).toBe(false)
-        expect(blocked.events[0]?.reason).toBe("profile_disabled")
+        expect(blocked.events[0]?.reason).toBe("memory_disabled")
 
         const memoryWrite = await Memory.write({
           session_id: "memory_still_on",
@@ -319,21 +309,21 @@ describe("memory + user profile backend", () => {
           value: "Run tests from packages/opencode.",
           reason: "manual",
         })
-        expect(memoryWrite.ok).toBe(true)
+        expect(memoryWrite.ok).toBe(false)
 
-        const snap = await Memory.snapshot({ session_id: "snapshot_user_off" })
-        expect(snap.prompt.includes("<user_profile>")).toBe(false)
+        await Memory.start({ session_id: "snapshot_user_off" })
+        const prompt = await Memory.activePrompt({ session_id: "snapshot_user_off" })
+        expect(prompt.prompt).toBe("")
       },
     })
   })
 
-  test("direct USER writes do not synthesize profile entries from natural-language paragraphs", async () => {
+  test("direct USER writes accept natural-language paragraphs as short-term notes", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
         memory: {
-          user_profile_enabled: true,
-          user_profile_include_inferred: true,
+          enabled: true,
         },
       } as Partial<Config.Info>,
     })
@@ -349,13 +339,14 @@ describe("memory + user profile backend", () => {
           reason: "manual",
         })
 
-        expect(result.ok).toBe(false)
-        expect(result.events[0]?.reason).toBe("invalid_user_format")
+        expect(result.ok).toBe(true)
+        if (!result.ok) throw new Error("expected memory write to succeed")
+        expect(result.session.entries[0]).toContain("默认用中文回答")
       },
     })
   })
 
-  test("applies item limits and rejects writes when store remains full after strong reflection", async () => {
+  test("applies short-term item limits without writing durable stores directly", async () => {
     await using tmp = await tmpdir({
       git: true,
     })
@@ -367,12 +358,14 @@ describe("memory + user profile backend", () => {
           session_id: "long_user",
           store: "user",
           action: "add",
-          value: `style[explicit]: ${"a".repeat(500)}`,
+          value: `preference[explicit]: ${"a".repeat(500)}`,
           reason: "manual",
         })
         expect(longUser.ok).toBe(true)
+        if (!longUser.ok) throw new Error("expected user write to succeed")
+        expect(longUser.session.entries[0]!.length).toBeLessThanOrEqual(2000)
         const userStore = await Memory.read("user")
-        expect(userStore.entries[0]!.length).toBeLessThanOrEqual(200 + "style[explicit]: ".length)
+        expect(userStore.entries).toEqual([])
 
         const longMemory = await Memory.write({
           session_id: "long_memory",
@@ -382,31 +375,15 @@ describe("memory + user profile backend", () => {
           reason: "manual",
         })
         expect(longMemory.ok).toBe(true)
+        if (!longMemory.ok) throw new Error("expected memory write to succeed")
+        expect(longMemory.session.entries[0]!.length).toBeLessThanOrEqual(2000)
         const memoryStoreAfterLong = await Memory.read("memory")
-        expect(memoryStoreAfterLong.entries[0]!.length).toBeLessThanOrEqual(300)
-
-        let blocked = false
-        for (let i = 0; i < 140; i++) {
-          const entry = `capacity-rule-${i} ${"x".repeat(270)}`
-          const result = await Memory.write({
-            session_id: `capacity_${i}`,
-            store: "memory",
-            action: "add",
-            value: entry,
-            reason: "manual",
-          })
-          if (!result.ok) {
-            blocked = true
-            expect(result.events.some((event) => event.reason === "capacity_limit")).toBe(true)
-            break
-          }
-        }
-        expect(blocked).toBe(true)
+        expect(memoryStoreAfterLong.entries).toEqual([])
       },
     })
   })
 
-  test("normalizes/removes invalid USER entries during startup reflection and emits events", async () => {
+  test("startup only prepares the session memory pool and does not mutate USER.md", async () => {
     await using tmp = await tmpdir({ git: true })
 
     await Instance.provide({
@@ -415,29 +392,28 @@ describe("memory + user profile backend", () => {
         const userFile = (await Memory.read("user")).file
         await Filesystem.write(
           userFile,
-          ["# USER", "- 用户偏好中文回答", "- style[explicit]: 先结论后展开", "- workflow[inferred]: should be invalid"].join(
+          ["# USER", "- 用户偏好中文回答", "- fact[explicit]: 先结论后展开"].join(
             "\n",
           ),
         )
 
-        await Memory.snapshot({ session_id: "startup_reflect" })
+        await Memory.start({ session_id: "startup_reflect" })
         const events = Memory.flush("startup_reflect")
-        expect(events.length).toBeGreaterThan(0)
+        expect(events.length).toBe(0)
 
         const userStore = await Memory.read("user")
-        expect(userStore.entries.some((entry) => entry.startsWith("workflow[inferred]:"))).toBe(false)
-        expect(userStore.invalid_entries ?? 0).toBe(0)
+        expect(userStore.entries).toEqual(["fact[explicit]: 先结论后展开"])
+        expect(userStore.invalid_entries ?? 0).toBe(1)
       },
     })
   })
 
-  test("explicit reflection still runs when automatic reflection is disabled", async () => {
+  test("explicit reflection skips without short-term session memory", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
         memory: {
-          memory_reflection_enabled: false,
-          user_profile_enabled: true,
+          enabled: true,
         },
       } as Partial<Config.Info>,
     })
@@ -448,29 +424,27 @@ describe("memory + user profile backend", () => {
         const userFile = (await Memory.read("user")).file
         await Filesystem.write(userFile, ["# USER", "- 用户偏好中文回答"].join("\n"))
 
-        const events = await Memory.reflect({
+        const result = await Memory.reflect({
           session_id: "explicit_reflect_when_disabled",
-          mode: "strong",
-          stores: ["user"],
+          scope: "current_session",
         })
 
-        expect(events.length).toBeGreaterThan(0)
-        expect(events.some((event) => event.store === "user")).toBe(true)
+        expect(result.status).toBe("skipped")
+        expect(result.events.length).toBe(0)
 
         const userStore = await Memory.read("user")
-        expect(userStore.entries.some((entry) => entry.includes("[explicit]:"))).toBe(true)
-        expect(userStore.invalid_entries ?? 0).toBe(0)
+        expect(userStore.entries).toEqual([])
+        expect(userStore.invalid_entries ?? 0).toBe(1)
       },
     })
   })
 
-  test("keeps inferred USER entries on disk when inferred injection is disabled", async () => {
+  test("keeps inferred USER entries in the prepared pool", async () => {
     await using tmp = await tmpdir({
       git: true,
       config: {
         memory: {
-          user_profile_enabled: true,
-          user_profile_include_inferred: false,
+          enabled: true,
         },
       } as Partial<Config.Info>,
     })
@@ -481,49 +455,98 @@ describe("memory + user profile backend", () => {
         const userFile = (await Memory.read("user")).file
         await Filesystem.write(
           userFile,
-          ["# USER", "- style[explicit]: 中文，先结论后展开", "- capability[inferred]: 从近期互动看，用户熟悉量子场论"].join(
+          ["# USER", "- preference[explicit]: 中文，先结论后展开", "- fact[inferred]: 从近期互动看，用户熟悉量子场论"].join(
             "\n",
           ),
         )
 
-        await Memory.reflect({
-          session_id: "reflect_keep_inferred",
-          mode: "strong",
-          stores: ["user"],
-        })
-
         const userStore = await Memory.read("user")
-        expect(userStore.entries.some((entry) => entry.startsWith("capability[inferred]:"))).toBe(true)
+        expect(userStore.entries.some((entry) => entry.startsWith("fact[inferred]:"))).toBe(true)
 
-        const snap = await Memory.snapshot({ session_id: "snapshot_no_inferred" })
-        expect(snap.prompt.includes("Priority order for user-profile guidance:")).toBe(true)
-        expect(
-          snap.prompt.includes("Follow the user's current-turn instructions first (highest priority)."),
-        ).toBe(true)
-        expect(
-          snap.prompt.includes("FOLLOW explicit USER profile entries below as standing instructions/preferences."),
-        ).toBe(true)
-        expect(
-          snap.prompt.includes(
-            "Treat inferred USER profile entries only as soft hints when consistent with both current-turn instructions and explicit profile.",
-          ),
-        ).toBe(true)
-        expect(snap.prompt.includes("style[explicit]: 中文，先结论后展开")).toBe(true)
-        expect(snap.prompt.includes("capability[inferred]: 从近期互动看，用户熟悉量子场论")).toBe(false)
+        await Memory.start({ session_id: "snapshot_no_inferred" })
+        await Memory.search({ session_id: "snapshot_no_inferred", query: "中文" })
+        await Memory.search({ session_id: "snapshot_no_inferred", query: "量子场论" })
+        const prompt = await Memory.activePrompt({ session_id: "snapshot_no_inferred" })
+        expect(prompt.prompt.includes("Priority order: current user instruction")).toBe(true)
+        expect(prompt.prompt.includes("preference[explicit]: 中文，先结论后展开")).toBe(true)
+        expect(prompt.prompt.includes("fact[inferred]: 从近期互动看，用户熟悉量子场论")).toBe(true)
       },
     })
   })
 
-  test("snapshot recall policy guides direct memory_write and explicit memory_reflect", async () => {
+  test("memory_search pins prepared pool hits into active memory", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const snap = await Memory.snapshot({ session_id: "snapshot_policy_direct_tools" })
-        expect(snap.prompt.includes("call memory_route")).toBe(false)
-        expect(snap.prompt.includes("call memory_write directly")).toBe(true)
-        expect(snap.prompt.includes("Use memory_reflect proactively")).toBe(true)
-        expect(snap.prompt.includes("Priority order for user-profile guidance:")).toBe(true)
+        const memoryFile = `${(await Memory.read("memory")).file}/${todayKey()}/MEMORY.md`
+        await Filesystem.write(
+          memoryFile,
+          ["# MEMORY", "- fact[explicit]: Phoenix scheduler design uses JSON cron files"].join("\n"),
+        )
+
+        const sessionID = "search_pins_active"
+        await Memory.start({ session_id: sessionID })
+        let prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).not.toContain("Phoenix scheduler")
+
+        const hits = await Memory.search({ session_id: sessionID, query: "Phoenix" })
+        expect(hits.length).toBe(1)
+
+        prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("Phoenix scheduler design uses JSON cron files")
+      },
+    })
+  })
+
+  test("memory_reload rebuilds pool and clears active memory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const memoryStore = await Memory.read("memory")
+        const memoryFile = `${memoryStore.file}/${todayKey()}/MEMORY.md`
+        await Filesystem.write(memoryFile, ["# MEMORY", "- fact[explicit]: Old alpha memory"].join("\n"))
+
+        const sessionID = "reload_refreshes_pool"
+        await Memory.start({ session_id: sessionID })
+        await Memory.search({ session_id: sessionID, query: "alpha" })
+        let prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("Old alpha memory")
+
+        await Filesystem.write(memoryFile, ["# MEMORY", "- fact[explicit]: New beta memory"].join("\n"))
+        const reloaded = await Memory.reload({ session_id: sessionID })
+        expect(reloaded.snapshot.entries.some((entry) => entry.text.includes("New beta memory"))).toBe(true)
+
+        prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).not.toContain("Old alpha memory")
+        expect(prompt.prompt).not.toContain("New beta memory")
+
+        await Memory.search({ session_id: sessionID, query: "beta" })
+        prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("New beta memory")
+      },
+    })
+  })
+
+  test("active memory policy guides direct memory tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await Memory.write({
+          session_id: "snapshot_policy_direct_tools",
+          store: "memory",
+          action: "add",
+          value: "Policy marker",
+          reason: "manual",
+        })
+        const prompt = await Memory.activePrompt({ session_id: "snapshot_policy_direct_tools" })
+        expect(prompt.prompt.includes("memory_route")).toBe(false)
+        expect(prompt.prompt.includes("Use memory_write")).toBe(true)
+        expect(prompt.prompt.includes("Use memory_search")).toBe(true)
+        expect(prompt.prompt.includes("Use memory_reflect")).toBe(true)
+        expect(prompt.prompt.includes("Priority order: current user instruction")).toBe(true)
       },
     })
   })

@@ -1233,6 +1233,7 @@ export namespace Config {
         .optional(),
       memory: z
         .object({
+          enabled: z.boolean().optional().describe("Enable memory tools, prompt recall, and memory reflection (default: true)"),
           cross_session_search_enabled: z
             .boolean()
             .optional()
@@ -1241,18 +1242,13 @@ export namespace Config {
             .enum(["current_project", "global"])
             .optional()
             .describe("Default cross-session search scope (default: current_project)"),
-          memory_reflection_enabled: z
-            .boolean()
+          memory_reflection_model: z
+            .object({
+              providerID: z.string(),
+              modelID: z.string(),
+            })
             .optional()
-            .describe("Enable memory reflection/consolidation passes (default: true)"),
-          user_profile_enabled: z
-            .boolean()
-            .optional()
-            .describe("Enable USER profile memory store behavior (default: true)"),
-          user_profile_include_inferred: z
-            .boolean()
-            .optional()
-            .describe("Allow inferred profile generation/injection (default: true)"),
+            .describe("Optional model override for LLM-based memory reflection"),
         })
         .optional(),
       cron: z
@@ -1356,6 +1352,9 @@ export namespace Config {
         "memory_management_model",
         "user_profile_history_extract_enabled",
         "user_profile_history_extract_limit",
+        "memory_reflection_enabled",
+        "user_profile_enabled",
+        "user_profile_include_inferred",
       ].filter((key) => key in nextMemory)
       if (removed.length > 0) {
         for (const key of removed) delete nextMemory[key]
@@ -1381,30 +1380,35 @@ export namespace Config {
 
     const parsed = Info.safeParse(normalized)
     if (parsed.success) {
-      if (!parsed.data.$schema && isFile) {
+      const normalizedChanged = normalized !== data
+      if ((!parsed.data.$schema || normalizedChanged) && isFile) {
         parsed.data.$schema = "https://opencode.ai/config.json"
-        const updated = original.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
-        await Filesystem.write(options.path, updated).catch(() => {})
+        if (normalizedChanged) {
+          await Filesystem.writeJson(options.path, parsed.data).catch(() => {})
+        } else {
+          const updated = original.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
+          await Filesystem.write(options.path, updated).catch(() => {})
+        }
       }
-      const data = parsed.data
-      if (data.plugin && isFile) {
-        for (let i = 0; i < data.plugin.length; i++) {
-          const plugin = data.plugin[i]
+      const result = parsed.data
+      if (result.plugin && isFile) {
+        for (let i = 0; i < result.plugin.length; i++) {
+          const plugin = result.plugin[i]
           try {
-            data.plugin[i] = import.meta.resolve!(plugin, options.path)
+            result.plugin[i] = import.meta.resolve!(plugin, options.path)
           } catch (e) {
             try {
               // import.meta.resolve sometimes fails with newly created node_modules
               const require = createRequire(options.path)
               const resolvedPath = require.resolve(plugin)
-              data.plugin[i] = pathToFileURL(resolvedPath).href
+              result.plugin[i] = pathToFileURL(resolvedPath).href
             } catch {
               // Ignore, plugin might be a generic string identifier like "mcp-server"
             }
           }
         }
       }
-      return data
+      return result
     }
 
     throw new InvalidError({

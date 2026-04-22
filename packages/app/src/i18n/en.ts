@@ -785,6 +785,8 @@ export const dict = {
   "settings.memory.section.memory": "Memory",
   "settings.memory.section.userProfile": "User Profile",
   "settings.memory.section.stores": "Memory stores (read-only)",
+  "settings.memory.row.enabled.title": "Enable memory",
+  "settings.memory.row.enabled.description": "Controls memory tools, active prompt recall, and the built-in daily reflection cron job.",
   "settings.memory.row.crossSessionEnabled.title": "Enable cross-session search",
   "settings.memory.row.crossSessionEnabled.description":
     "Allow recalling relevant information from past sessions when needed.",
@@ -806,6 +808,9 @@ export const dict = {
   "settings.memory.userProfile.group.explicit": "Explicit",
   "settings.memory.userProfile.group.inferred": "Inferred",
   "settings.memory.userProfile.emptyValid": "No valid user-profile entries yet.",
+  "settings.memory.store.activeSession": "Active session memory (L1)",
+  "settings.memory.store.activeSession.description": "Short-term memory currently plugged into this session prompt.",
+  "settings.memory.store.daily": "Daily memory",
   "settings.memory.store.memory": "MEMORY store",
   "settings.memory.store.userProfile": "USER profile store",
   "settings.memory.action.refresh": "Refresh",

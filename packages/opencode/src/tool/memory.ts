@@ -17,24 +17,24 @@ function renderEntries(items: string[]) {
 
 export const MemoryWriteTool = Tool.define("memory_write", {
   description: [
-    "Directly edit durable memory entries in the USER or MEMORY store.",
-    "MEMORY stores project/environment explicit durable facts.",
-    "USER stores strict user-profile entries using type[source]: content format.",
+    "Write a short-term session memory note for later recall and reflection.",
+    "All writes go to the current session memory file first; later reflection can consolidate durable items into USER or MEMORY.",
+    "If the user asks to remember something long-term, write that request in natural language in the note.",
     "Do not store transient logs or secrets.",
-    "The main agent should use memory_write directly whenever it decides a durable memory/profile item should be stored or edited.",
+    "The written note is silently added to active memory and remains available in this session.",
   ].join("\n"),
   parameters: z.object({
-    store: Memory.Store,
+    store: Memory.Store.default("memory").describe("Intended future store for reflection; write still goes to session memory."),
     action: z.enum(["add", "replace", "remove"]),
-    value: z.string().optional().describe("Entry text. USER requires strict 'type[source]: content'."),
+    value: z.string().optional().describe("Natural-language memory note."),
     profile: z
       .object({
-        type: z.enum(["style", "workflow", "preference", "constraint", "capability"]),
+        type: z.enum(["fact", "preference", "task"]),
         source: z.enum(["explicit", "inferred"]),
         content: z.string(),
       })
       .optional()
-      .describe("Structured USER profile entry. If provided with store=user, value is built automatically."),
+      .describe("Optional helper for user-profile-like notes. If provided with store=user, value is built automatically."),
     index: z.number().int().positive().optional(),
     match: z.string().optional(),
     reason: Memory.WriteReason.optional(),
@@ -55,30 +55,28 @@ export const MemoryWriteTool = Tool.define("memory_write", {
     })
 
     if (!result.ok) return blocked(result.events[0]?.summary ?? "Write blocked")
-    const store = result.store ?? (await Memory.read(input.store))
-    if (!store.enabled) {
-      return {
-        title: "Memory store disabled",
-        output: `${store.store.toUpperCase()} store is disabled by settings.`,
-        metadata: { blocked: false, store: store.store, enabled: false },
-      }
-    }
     return {
       title: "Memory updated",
-      output: [`Store: ${store.store}`, `Used: ${store.used}/${store.limit}`, "", renderEntries(store.entries)].join("\n"),
+      output: [
+        "Store: session",
+        `File: ${result.session.file}`,
+        `Used: ${result.session.used}`,
+        "",
+        renderEntries(result.session.entries),
+      ].join("\n"),
       metadata: {
         blocked: false,
-        store: store.store,
-        used: store.used,
-        limit: store.limit,
-        enabled: store.enabled,
+        store: "session",
+        intended_store: input.store,
+        used: result.session.used,
+        enabled: true,
       },
     }
   },
 })
 
 export const MemoryReadTool = Tool.define("memory_read", {
-  description: "Read durable memory entries from USER or MEMORY store.",
+  description: "Read durable USER entries or recent daily MEMORY entries.",
   parameters: z.object({
     store: Memory.Store,
     index: z.number().int().positive().optional(),
@@ -127,42 +125,77 @@ export const MemoryListTool = Tool.define("memory_list", {
 })
 
 export const MemorySearchTool = Tool.define("memory_search", {
-  description: "Search USER and MEMORY entries by substring.",
+  description: [
+    "Search the current session prepared memory pool by keyword.",
+    "The pool is initialized from USER.md, recent daily memory, and current session short-term memory.",
+    "Search accepts separated keywords; any keyword match is a candidate.",
+    "Hits are silently added to active memory and will remain injected for this session.",
+  ].join("\n"),
   parameters: z.object({
     query: z.string(),
     store: Memory.Store.optional(),
     limit: z.number().int().positive().optional(),
   }),
-  async execute(input) {
-    const hits = await Memory.search(input)
+  async execute(input, ctx) {
+    const hits = await Memory.search({ ...input, session_id: ctx.sessionID })
     return {
       title: "Memory search",
-      output: hits.length ? hits.map((hit) => `[${hit.store}] ${hit.index}. ${hit.text}`).join("\n") : "No matches.",
+      output: hits.length
+        ? hits.map((hit) => `[${hit.source}] ${hit.index}. ${hit.text}`).join("\n")
+        : "No matches.",
       metadata: { count: hits.length },
+    }
+  },
+})
+
+export const MemoryReloadTool = Tool.define("memory_reload", {
+  description: [
+    "Reload the current session memory cache from disk.",
+    "This refreshes the prepared memory pool and clears active recalled memory.",
+    "Use it after the user manually edits memory files or when the current session memory cache may be stale.",
+  ].join("\n"),
+  parameters: z.object({}),
+  async execute(_input, ctx) {
+    const result = await Memory.reload({ session_id: ctx.sessionID })
+    return {
+      title: "Memory reloaded",
+      output: [
+        `Pool entries: ${result.snapshot.entries.length}`,
+        "Active memory cleared.",
+      ].join("\n"),
+      metadata: {
+        entries: result.snapshot.entries.length,
+      },
     }
   },
 })
 
 export const MemoryReflectTool = Tool.define("memory_reflect", {
   description: [
-    "Run memory reflection/consolidation explicitly.",
-    "Use strong mode near capacity or when aggressively deduping/merging; use light mode for routine cleanup.",
-    "Optionally target only USER and/or MEMORY stores.",
+    "Run LLM-based memory reflection/consolidation explicitly.",
+    "Reflection reads short-term session memory, writes day-by-day long-term MEMORY files, and applies USER.md profile patches.",
+    "Manual calls default to current_session; daily cron calls should use global.",
   ].join("\n"),
   parameters: z.object({
-    mode: z.enum(["light", "strong"]).default("light"),
-    stores: z.array(Memory.Store).optional(),
+    scope: Memory.ReflectionScope.optional(),
+    dry_run: z.boolean().default(false),
   }),
   async execute(input, ctx) {
-    const events = await Memory.reflect({
+    const result = await Memory.reflect({
       session_id: ctx.sessionID,
-      mode: input.mode,
-      stores: input.stores,
+      scope: input.scope,
+      dry_run: input.dry_run,
+      trigger: "manual",
     })
     return {
       title: "Memory reflection",
-      output: events.length ? Memory.format(events) : "No memory changes.",
-      metadata: { blocked: false, mode: input.mode, count: events.length },
+      output: result.events.length ? Memory.format(result.events) : result.summary || "No memory changes.",
+      metadata: {
+        blocked: result.status === "failed",
+        status: result.status,
+        run_id: result.run_id,
+        count: result.events.length,
+      },
     }
   },
 })

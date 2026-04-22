@@ -8,6 +8,21 @@ const MemoryResponse = z.object({
   settings: Memory.Settings,
   user: Memory.ReadStore,
   memory: Memory.ReadStore,
+  daily: Memory.DailyMemory,
+  active: z
+    .object({
+      session_id: z.string(),
+      prompt: z.string(),
+      entries: z.array(
+        z.object({
+          source: Memory.MemoryPoolSource,
+          store: Memory.Store.optional(),
+          index: z.number(),
+          text: z.string(),
+        }),
+      ),
+    })
+    .optional(),
 })
 
 export const MemoryRoutes = lazy(() =>
@@ -15,7 +30,7 @@ export const MemoryRoutes = lazy(() =>
     "/",
     describeRoute({
       summary: "Get memory stores",
-      description: "Read effective memory settings and both durable stores (USER and MEMORY).",
+      description: "Read effective memory settings, durable stores, and optional session active memory.",
       operationId: "memory.get",
       responses: {
         200: {
@@ -29,11 +44,29 @@ export const MemoryRoutes = lazy(() =>
       },
     }),
     async (c) => {
-      const [set, stores] = await Promise.all([Memory.settings(), Memory.list()])
+      const sessionID = c.req.query("session_id")
+      const [set, stores, active] = await Promise.all([
+        Memory.settings(),
+        Memory.list(),
+        sessionID
+          ? Memory.activePrompt({ session_id: sessionID }).then((result) => ({
+              session_id: sessionID,
+              prompt: result.prompt,
+              entries: result.active.map((entry) => ({
+                source: entry.source,
+                store: entry.store,
+                index: entry.index,
+                text: entry.text,
+              })),
+            }))
+          : undefined,
+      ])
       return c.json({
         settings: set,
         user: stores.user,
         memory: stores.memory,
+        daily: stores.daily,
+        ...(active ? { active } : {}),
       })
     },
   ),

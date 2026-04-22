@@ -307,8 +307,8 @@ export namespace SessionPrompt {
 
     let step = 0
     const session = await Session.get(sessionID)
-    // Snapshot is frozen per session; new writes are visible only in new sessions.
-    const memory = await Memory.snapshot({ session_id: sessionID })
+    // Prepare the session memory pool once. Only active recalled memory is injected later.
+    await Memory.start({ session_id: sessionID })
     const attachMemoryReceipt = async (messageID: MessageID, events: Memory.Event[]) => {
       if (!events.length) return
       await Session.updatePart({
@@ -711,12 +711,22 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
+      const lastUserText = msgs
+        .find((msg) => msg.info.id === lastUser.id)
+        ?.parts.flatMap((part) => {
+          if (part.type !== "text" || part.ignored || part.synthetic) return []
+          return [part.text]
+        })
+        .join("\n")
+      if (lastUserText) await Memory.autoRecall({ session_id: sessionID, query: lastUserText })
+      const memory = await Memory.activePrompt({ session_id: sessionID })
+
       // Build system prompt, adding structured output instruction if needed
       const skills = await SystemPrompt.skills(agent)
       const system = [
         ...(await SystemPrompt.environment(model)),
         ...(skills ? [skills] : []),
-        memory.prompt,
+        ...(memory.prompt ? [memory.prompt] : []),
         ...(await InstructionPrompt.system()),
       ]
       const format = lastUser.format ?? { type: "text" }

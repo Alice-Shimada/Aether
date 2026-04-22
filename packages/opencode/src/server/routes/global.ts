@@ -750,6 +750,10 @@ export const GlobalRoutes = lazy(() =>
       async (c) => {
         const config = c.req.valid("json")
         const next = await Config.updateGlobal(config)
+        if (config.memory && "enabled" in config.memory) {
+          const { Cron } = await import("@/cron")
+          await Cron.syncBuiltinMemoryReflectionJob().catch(() => undefined)
+        }
         return c.json(next)
       },
     )

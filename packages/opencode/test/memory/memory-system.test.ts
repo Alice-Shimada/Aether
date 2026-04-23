@@ -76,6 +76,35 @@ describe("memory + user profile backend", () => {
     })
   })
 
+  test("current_scope reflection ignores short-term memory from other projects", async () => {
+    await using left = await tmpdir()
+    await using right = await tmpdir()
+
+    await Instance.provide({
+      directory: left.path,
+      fn: async () => {
+        const session = await Session.create({ title: "Left memory source" })
+        const written = await Memory.write({
+          session_id: session.id,
+          store: "memory",
+          action: "add",
+          value: "Left-only short-term memory should not be reflected from right project.",
+          reason: "manual",
+        })
+        expect(written.ok).toBe(true)
+      },
+    })
+
+    await Instance.provide({
+      directory: right.path,
+      fn: async () => {
+        const result = await Memory.reflect({ scope: "current_scope", dry_run: true })
+        expect(result.status).toBe("skipped")
+        expect(result.summary).toBe("No short-term memory files to reflect")
+      },
+    })
+  })
+
   test("session_search supports multi-keyword matching with session-level merge and recency-first ordering", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

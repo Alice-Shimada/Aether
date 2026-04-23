@@ -17,16 +17,12 @@ import { Provider } from "@/provider/provider"
 import { ModelID, ProviderID } from "@/provider/schema"
 import { ulid } from "ulid"
 
-const STORE_LIMIT = {
-  user: 12_000,
-  memory: 12_000,
-} as const
-
 const ITEM_LIMIT = {
   user: 200,
   memory: 300,
 } as const
 
+const USER_MEMORY_LIMIT = 12_000
 const DAILY_MEMORY_LIMIT = 120_000
 const SESSION_ITEM_LIMIT = 2_000
 const ACTIVE_PROMPT_LIMIT = 4_000
@@ -53,24 +49,6 @@ function norm(input: string) {
 function clip(input: string, max: number) {
   if (input.length <= max) return input
   return input.slice(0, max).trimEnd()
-}
-
-function tokenize(input: string) {
-  return norm(input)
-    .toLowerCase()
-    .split(/[\s,;:.!?()[\]{}"']+/)
-    .filter(Boolean)
-}
-
-function similar(a: string, b: string) {
-  const ta = new Set(tokenize(a))
-  const tb = new Set(tokenize(b))
-  if (!ta.size || !tb.size) return false
-  let same = 0
-  for (const token of ta) {
-    if (tb.has(token)) same++
-  }
-  return same / Math.max(ta.size, tb.size) >= 0.75
 }
 
 function receiptMark(input: unknown) {
@@ -127,12 +105,6 @@ function parseTypedEntry(rawInput: string, options?: { allowInferred?: boolean; 
 
 function parseUserEntry(rawInput: string) {
   return parseTypedEntry(rawInput)
-}
-
-function normalizeMemoryEntry(rawInput: string) {
-  const line = norm(rawInput).replace(/^-+\s*/, "")
-  if (!line) return ""
-  return clip(line, ITEM_LIMIT.memory)
 }
 
 function normalizeSessionMemoryEntry(rawInput: string) {
@@ -251,7 +223,6 @@ type LoadedUser = {
   file: string
   validEntries: string[]
   invalidEntries: string[]
-  parsedEntries: ParsedTypedEntry[]
 }
 
 async function loadUserRaw(): Promise<LoadedUser> {
@@ -260,7 +231,6 @@ async function loadUserRaw(): Promise<LoadedUser> {
   const bullets = parseBulletEntries(text)
   const validEntries: string[] = []
   const invalidEntries: string[] = []
-  const parsedEntries: ParsedTypedEntry[] = []
 
   for (const raw of bullets) {
     const parsed = parseUserEntry(raw)
@@ -269,10 +239,9 @@ async function loadUserRaw(): Promise<LoadedUser> {
       continue
     }
     validEntries.push(parsed.entry.canonical)
-    parsedEntries.push(parsed.entry)
   }
 
-  return { file, validEntries, invalidEntries, parsedEntries }
+  return { file, validEntries, invalidEntries }
 }
 
 async function loadMemoryRaw() {
@@ -340,6 +309,25 @@ async function listSessionMemoryFiles(input: { session_id?: string; since?: numb
     files.push({ session_id: dir.name, file, mtime: stat.mtimeMs })
   }
   return files.sort((a, b) => b.mtime - a.mtime)
+}
+
+async function filterSessionMemoryFilesByScope(
+  files: Array<{ session_id: string; file: string; mtime: number }>,
+  scope: "current_session" | "current_scope" | "global",
+) {
+  if (scope !== "current_scope" || files.length === 0) return files
+
+  const ids = files.map((file) => SessionID.make(file.session_id))
+  const rows = Database.use((db) =>
+    db
+      .select()
+      .from(SessionTable)
+      .where(and(inArray(SessionTable.id, ids), isNull(SessionTable.time_archived)))
+      .all(),
+  )
+  const scoped = sessionScopeFilter("current_project")
+  const allowed = new Set(rows.filter((session) => scoped.match(session)).map((session) => session.id))
+  return files.filter((file) => allowed.has(SessionID.make(file.session_id)))
 }
 
 function localStartOfDay(input = Date.now()) {
@@ -420,175 +408,6 @@ function splitUserEntries(entries: string[]) {
   return { explicit, inferred }
 }
 
-function normalizeInvalidUserEntry(raw: string) {
-  const text = norm(raw)
-  if (!text) return undefined
-
-  if (/(任务|待办|todo|deadline|计划|next|follow[- ]?up)/i.test(text)) {
-    return `task[explicit]: ${clip(text, ITEM_LIMIT.user)}`
-  }
-  if (/(喜欢|偏好|希望|prefer|style|tone|format|中文|english|先结论)/i.test(text)) {
-    return `preference[explicit]: ${clip(text, ITEM_LIMIT.user)}`
-  }
-  return `fact[explicit]: ${clip(text, ITEM_LIMIT.user)}`
-}
-
-function mergeUserEntries(a: string, b: string) {
-  const pa = parseUserEntry(a)
-  const pb = parseUserEntry(b)
-  if (!pa.ok || !pb.ok) return undefined
-  if (pa.entry.kind !== pb.entry.kind) return undefined
-  if (pa.entry.source !== pb.entry.source) return undefined
-  const content = clip(norm(`${pa.entry.content}; ${pb.entry.content}`), ITEM_LIMIT.user)
-  return `${pa.entry.kind}[${pa.entry.source}]: ${content}`
-}
-
-function reflectEntries(
-  store: "user" | "memory",
-  inputEntries: string[],
-  invalidEntries: string[],
-  mode: "light" | "strong",
-) {
-  const events: Array<{
-    store: "user" | "memory"
-    action: "merge" | "compact" | "remove" | "block"
-    reason: string
-    summary: string
-    blocked?: boolean
-  }> = []
-
-  let entries = [...inputEntries]
-
-  if (store === "user" && invalidEntries.length > 0) {
-    for (const invalid of invalidEntries) {
-      const normalized = normalizeInvalidUserEntry(invalid)
-      if (!normalized) {
-        events.push({
-          store,
-          action: "remove",
-          reason: "invalid_user_entry_removed",
-          summary: "Removed invalid USER profile entry during reflection",
-        })
-        continue
-      }
-      entries.push(normalized)
-      events.push({
-        store,
-        action: "compact",
-        reason: "invalid_user_entry_normalized",
-        summary: normalized,
-      })
-    }
-  }
-
-  const seen = new Set<string>()
-  const deduped: string[] = []
-  for (const item of entries) {
-    const normalized = store === "user" ? item : normalizeMemoryEntry(item)
-    if (!normalized) continue
-    const key = normalized.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    deduped.push(normalized)
-  }
-  entries = deduped
-
-  if (mode === "strong") {
-    const merged: string[] = []
-    for (const item of entries) {
-      const idx = merged.findIndex((other) => {
-        if (store === "user") {
-          const lhs = parseUserEntry(other)
-          const rhs = parseUserEntry(item)
-          if (!lhs.ok || !rhs.ok) return false
-          if (lhs.entry.kind !== rhs.entry.kind || lhs.entry.source !== rhs.entry.source) return false
-          return similar(lhs.entry.content, rhs.entry.content)
-        }
-        return similar(other, item)
-      })
-
-      if (idx < 0) {
-        merged.push(item)
-        continue
-      }
-
-      if (store === "user") {
-        const next = mergeUserEntries(merged[idx]!, item)
-        if (next) {
-          merged[idx] = next
-          events.push({
-            store,
-            action: "merge",
-            reason: "strong_reflection_merge",
-            summary: next,
-          })
-          continue
-        }
-      }
-
-      const mergedValue = clip(norm(`${merged[idx]}; ${item}`), ITEM_LIMIT[store])
-      merged[idx] = mergedValue
-      events.push({
-        store,
-        action: "merge",
-        reason: "strong_reflection_merge",
-        summary: mergedValue,
-      })
-    }
-    entries = merged
-  }
-
-  let used = usage(entries)
-  while (mode === "strong" && used > STORE_LIMIT[store] && entries.length > 0) {
-    if (store === "user") {
-      let changed = false
-      entries = entries.map((line) => {
-        const parsed = parseUserEntry(line)
-        if (!parsed.ok) return line
-        if (parsed.entry.content.length <= 80) return line
-        changed = true
-        const content = clip(parsed.entry.content, parsed.entry.content.length - 20)
-        return `${parsed.entry.kind}[${parsed.entry.source}]: ${content}`
-      })
-      if (!changed) break
-    } else {
-      let changed = false
-      entries = entries.map((line) => {
-        if (line.length <= 120) return line
-        changed = true
-        return clip(line, line.length - 30)
-      })
-      if (!changed) break
-    }
-    events.push({
-      store,
-      action: "compact",
-      reason: "strong_reflection_shrink",
-      summary: "Compacted entries to satisfy store capacity",
-    })
-    used = usage(entries)
-  }
-
-  if (used > STORE_LIMIT[store]) {
-    return {
-      ok: false as const,
-      entries: inputEntries,
-      events: [
-        ...events,
-        {
-          store,
-          action: "block" as const,
-          reason: "capacity_limit",
-          summary: `${store.toUpperCase()} store is full after strong reflection`,
-          blocked: true,
-        },
-      ],
-    }
-  }
-
-  return { ok: true as const, entries, events }
-}
-
 export namespace Memory {
   export const Store = z.enum(["user", "memory"])
   export type Store = z.infer<typeof Store>
@@ -659,7 +478,7 @@ export namespace Memory {
   })
   export type SearchHit = z.infer<typeof SearchHit>
 
-  export const MemoryPoolSource = z.enum(["user", "memory", "daily", "session"])
+  export const MemoryPoolSource = z.enum(["user", "daily", "session"])
   export type MemoryPoolSource = z.infer<typeof MemoryPoolSource>
 
   export type PoolEntry = {
@@ -784,8 +603,8 @@ export namespace Memory {
     } satisfies Settings
   }
 
-  async function saveStore(store: Store, entries: string[]) {
-    await Filesystem.write(memoryPath(store), serializeStore(store, entries))
+  async function saveUserStore(entries: string[]) {
+    await Filesystem.write(memoryPath("user"), serializeStore("user", entries))
   }
 
   async function readUserStore(current: Settings): Promise<ReadStore> {
@@ -797,7 +616,7 @@ export namespace Memory {
         file: loaded.file,
         entries: [],
         used: 0,
-        limit: STORE_LIMIT.user,
+        limit: USER_MEMORY_LIMIT,
         usage: 0,
       }
     }
@@ -809,37 +628,55 @@ export namespace Memory {
       file: loaded.file,
       entries: loaded.validEntries,
       used,
-      limit: STORE_LIMIT.user,
-      usage: used / STORE_LIMIT.user,
+      limit: USER_MEMORY_LIMIT,
+      usage: used / USER_MEMORY_LIMIT,
       explicit_entries: grouped.explicit,
       inferred_entries: grouped.inferred,
       invalid_entries: loaded.invalidEntries.length,
     }
   }
 
-  async function readMemoryStore(): Promise<ReadStore> {
-    const loaded = await loadMemoryRaw()
-    const used = usage(loaded.entries)
+  function dailyStoreFromEntries(input: { enabled: boolean; file: string; entries: string[] }): ReadStore {
+    const used = usage(input.entries)
     return {
       store: "memory",
-      enabled: (await settings()).enabled,
-      file: loaded.file,
-      entries: loaded.entries,
+      enabled: input.enabled,
+      file: input.file,
+      entries: input.entries,
       used,
       limit: DAILY_MEMORY_LIMIT,
       usage: used / DAILY_MEMORY_LIMIT,
     }
   }
 
+  async function readMemoryStore(current: Settings): Promise<ReadStore> {
+    const loaded = await loadMemoryRaw()
+    return dailyStoreFromEntries({
+      enabled: current.enabled,
+      file: loaded.file,
+      entries: loaded.entries,
+    })
+  }
+
+  function readMemoryStoreFromDaily(current: Settings, daily: Awaited<ReturnType<typeof loadRecentDailyMemoryRaw>>) {
+    const entries = daily.days.flatMap((day) => day.entries)
+    return dailyStoreFromEntries({
+      enabled: current.enabled,
+      file: daily.root,
+      entries,
+    })
+  }
+
   export async function read(store: Store) {
     const current = await settings()
     if (store === "user") return readUserStore(current)
-    return readMemoryStore()
+    return readMemoryStore(current)
   }
 
   export async function list() {
     const current = await settings()
-    const [user, memory, daily] = await Promise.all([readUserStore(current), readMemoryStore(), loadRecentDailyMemoryRaw()])
+    const [user, daily] = await Promise.all([readUserStore(current), loadRecentDailyMemoryRaw()])
+    const memory = readMemoryStoreFromDaily(current, daily)
     return { user, memory, daily: { root: daily.root, days: daily.days } satisfies DailyMemory }
   }
 
@@ -878,8 +715,8 @@ export namespace Memory {
     }
 
     const [userStore, memoryStore, sessionStore] = await Promise.all([
-      read("user"),
-      read("memory"),
+      readUserStore(current),
+      readMemoryStore(current),
       loadSessionMemoryRaw(input.session_id),
     ])
 
@@ -1461,10 +1298,13 @@ export namespace Memory {
     }
 
     const since = scope === "current_session" ? undefined : localStartOfDay()
-    const files = await listSessionMemoryFiles({
-      session_id: scope === "current_session" ? input.session_id : undefined,
-      since,
-    })
+    const files = await filterSessionMemoryFilesByScope(
+      await listSessionMemoryFiles({
+        session_id: scope === "current_session" ? input.session_id : undefined,
+        since,
+      }),
+      scope,
+    )
     const sessionFiles = (
       await Promise.all(
         files.map(async (file) => ({
@@ -1528,9 +1368,7 @@ export namespace Memory {
         if (nextDaily.length !== today.entries.length) {
           await Filesystem.write(today.file, serializeStore("memory", nextDaily))
         }
-        if (JSON.stringify(userResult.entries) !== JSON.stringify(user.validEntries)) {
-          await saveStore("user", userResult.entries)
-        }
+        if (JSON.stringify(userResult.entries) !== JSON.stringify(user.validEntries)) await saveUserStore(userResult.entries)
         for (const file of sessionFiles) {
           await prepare({ session_id: file.session_id, force: true }).catch(() => undefined)
         }

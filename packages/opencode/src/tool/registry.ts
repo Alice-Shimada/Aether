@@ -36,8 +36,6 @@ import {
   MemoryReloadTool,
   MemorySearchTool,
   MemoryWriteTool,
-  SessionReadTool,
-  SessionSearchTool,
 } from "./memory"
 import {
   CronCreateTool,
@@ -158,7 +156,6 @@ export namespace ToolRegistry {
           MemorySearchTool,
           MemoryReloadTool,
           MemoryReflectTool,
-          ...(cfg.memory?.cross_session_search_enabled === false ? [] : [SessionSearchTool, SessionReadTool]),
           CronListTool,
           CronGetTool,
           CronCreateTool,

@@ -787,16 +787,9 @@ export const dict = {
   "settings.memory.section.stores": "Memory stores (read-only)",
   "settings.memory.row.enabled.title": "Enable memory",
   "settings.memory.row.enabled.description": "Controls memory tools, active prompt recall, and the built-in daily reflection cron job.",
-  "settings.memory.row.crossSessionEnabled.title": "Enable cross-session search",
-  "settings.memory.row.crossSessionEnabled.description":
-    "Allow recalling relevant information from past sessions when needed.",
-  "settings.memory.row.scope.title": "Default cross-session scope",
-  "settings.memory.row.scope.description": "Choose whether recall searches the current project or all projects.",
   "settings.memory.row.reflection.title": "Enable reflection",
   "settings.memory.row.reflection.description":
     "Allow automatic memory consolidation after writes and before snapshots. Strong reflection can also be triggered explicitly.",
-  "settings.memory.scope.currentProject": "Current project",
-  "settings.memory.scope.global": "Global",
   "settings.memory.row.userProfileEnabled.title": "Enable user profile",
   "settings.memory.row.userProfileEnabled.description":
     "Turn the USER profile system on or off. Disabled means USER is not read, written, or injected.",

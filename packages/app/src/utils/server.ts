@@ -15,11 +15,8 @@ type Kb = {
   apiKey?: string
   baseURL?: string
 }
-type MemoryScope = "current_project" | "global"
 type MemorySettings = {
   enabled: boolean
-  cross_session_search_enabled: boolean
-  cross_session_search_scope: MemoryScope
   memory_reflection_model?: {
     providerID: string
     modelID: string

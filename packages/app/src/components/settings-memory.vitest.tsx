@@ -18,8 +18,6 @@ const state = vi.hoisted(() => ({
   bootstrapCalls: 0,
   serverMemory: {
     enabled: true,
-    cross_session_search_enabled: true,
-    cross_session_search_scope: "current_project",
   } as Record<string, unknown>,
 }))
 
@@ -83,8 +81,6 @@ vi.mock("@/context/global-sync", async () => {
 
   const initialMemory = {
     enabled: true,
-    cross_session_search_enabled: true,
-    cross_session_search_scope: "current_project",
   }
   state.serverMemory = { ...initialMemory }
 
@@ -155,34 +151,6 @@ vi.mock("@opencode-ai/ui/button", () => ({
   ),
 }))
 
-vi.mock("@opencode-ai/ui/select", () => ({
-  Select: (props: {
-    options: unknown[]
-    current?: unknown
-    value: (item: unknown) => string
-    label: (item: unknown) => string
-    onSelect?: (item: unknown) => void
-    disabled?: boolean
-    ["data-action"]?: string
-  }) => {
-    const currentValue = () => (props.current ? props.value(props.current) : "")
-    return (
-      <button
-        type="button"
-        data-action={props["data-action"]}
-        disabled={props.disabled}
-        onClick={() => {
-          if (props.disabled) return
-          const next = props.options.find((item) => props.value(item) !== currentValue()) ?? props.options[0]
-          props.onSelect?.(next)
-        }}
-      >
-        {props.current ? props.label(props.current) : "none"}
-      </button>
-    )
-  },
-}))
-
 vi.mock("@opencode-ai/ui/switch", () => ({
   Switch: (props: { checked?: boolean; disabled?: boolean; onChange?: (value: boolean) => void }) => (
     <button
@@ -240,13 +208,9 @@ beforeEach(() => {
   state.bootstrapCalls = 0
   state.serverMemory = {
     enabled: true,
-    cross_session_search_enabled: true,
-    cross_session_search_scope: "current_project",
   }
   state.setMemory?.({
     enabled: true,
-    cross_session_search_enabled: true,
-    cross_session_search_scope: "current_project",
   })
   state.setPath?.({
     directory: "/tmp/project",
@@ -276,28 +240,19 @@ describe("settings memory", () => {
     off()
   })
 
-  test("changing scope does not break later memory updates", async () => {
+  test("changing memory enabled updates config", async () => {
     const { host, off } = mount()
 
     await Promise.resolve()
 
-    const scopeButton = host.querySelector('[data-action="settings-memory-scope"]') as HTMLButtonElement
-    expect(scopeButton).toBeTruthy()
-    scopeButton.click()
-
     const switches = [...host.querySelectorAll('[data-switch="true"]')] as HTMLButtonElement[]
-    expect(switches.length).toBeGreaterThanOrEqual(2)
-    switches[1].click()
+    expect(switches.length).toBeGreaterThanOrEqual(1)
+    switches[0].click()
 
-    expect(state.updateCalls).toHaveLength(2)
+    expect(state.updateCalls).toHaveLength(1)
     expect(state.updateCalls[0]).toEqual({
       memory: expect.objectContaining({
-        cross_session_search_scope: "global",
-      }),
-    })
-    expect(state.updateCalls[1]).toEqual({
-      memory: expect.objectContaining({
-        cross_session_search_enabled: false,
+        enabled: false,
       }),
     })
 
@@ -309,13 +264,10 @@ describe("settings memory", () => {
     const { host, off } = mount()
     await Promise.resolve()
 
-    const scopeButton = host.querySelector('[data-action="settings-memory-scope"]') as HTMLButtonElement
-    expect(scopeButton).toBeTruthy()
-    scopeButton.click()
-
     const switches = [...host.querySelectorAll('[data-switch="true"]')] as HTMLButtonElement[]
-    expect(switches.length).toBeGreaterThanOrEqual(2)
-    switches[1].click()
+    expect(switches.length).toBeGreaterThanOrEqual(1)
+    switches[0].click()
+    switches[0].click()
     expect(state.updateCalls).toHaveLength(2)
     expect(state.pendingUpdates.length).toBe(2)
 
@@ -330,9 +282,8 @@ describe("settings memory", () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(state.bootstrapCalls).toBe(1)
-    expect(scopeButton.textContent).toBe("settings.memory.scope.currentProject")
     const switchesAfter = [...host.querySelectorAll('[data-switch="true"]')] as HTMLButtonElement[]
-    expect(switchesAfter[1]?.textContent).toBe("true")
+    expect(switchesAfter[0]?.textContent).toBe("true")
 
     off()
   })

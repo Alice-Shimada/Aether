@@ -2,14 +2,14 @@ import path from "path"
 import fs from "fs/promises"
 import { createHash } from "node:crypto"
 import z from "zod"
-import { generateObject } from "ai"
+import { generateObject, streamObject } from "ai"
 import { Config } from "@/config/config"
 import { Global } from "@/global"
 import { Instance } from "@/project/instance"
 import { ProjectID } from "@/project/schema"
 import { Filesystem } from "@/util/filesystem"
-import { Database, and, asc, count, eq, inArray, isNull } from "@/storage/db"
-import { MessageTable, PartTable, SessionTable } from "@/session/session.sql"
+import { Database, and, eq, inArray, isNull } from "@/storage/db"
+import { SessionTable } from "@/session/session.sql"
 import { SessionID } from "@/session/schema"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
 import { Storage } from "@/storage/storage"
@@ -26,6 +26,7 @@ const USER_MEMORY_LIMIT = 12_000
 const DAILY_MEMORY_LIMIT = 120_000
 const SESSION_ITEM_LIMIT = 2_000
 const ACTIVE_PROMPT_LIMIT = 4_000
+const USER_PROFILE_PROMPT_LIMIT = 1_600
 const AUTO_RECALL_LIMIT = 5
 const RECENT_DAILY_LIMIT = 30
 
@@ -42,6 +43,12 @@ type ParsedTypedEntry = {
   canonical: string
 }
 
+type ReflectionObjectGenerator = (
+  params: Parameters<typeof generateObject>[0],
+) => Promise<{
+  object: ReflectionResult
+}>
+
 function norm(input: string) {
   return input.replace(/\s+/g, " ").trim()
 }
@@ -49,10 +56,6 @@ function norm(input: string) {
 function clip(input: string, max: number) {
   if (input.length <= max) return input
   return input.slice(0, max).trimEnd()
-}
-
-function receiptMark(input: unknown) {
-  return input === 1 || input === "1" || input === true || input === "true"
 }
 
 function parseBulletEntries(text: string) {
@@ -336,6 +339,21 @@ function localStartOfDay(input = Date.now()) {
   return date.getTime()
 }
 
+function summarizeReflectionError(error: unknown) {
+  if (error instanceof Error) {
+    const responseBody =
+      "responseBody" in error && typeof (error as { responseBody?: unknown }).responseBody === "string"
+        ? (error as { responseBody: string }).responseBody
+        : undefined
+    if (responseBody) {
+      const body = clip(norm(responseBody), 500)
+      if (body) return `${error.message}: ${body}`
+    }
+    return error.message
+  }
+  return String(error)
+}
+
 const ReflectionResultSchema = z.object({
   daily_memory: z
     .array(
@@ -372,6 +390,53 @@ const ReflectionResultSchema = z.object({
   summary: z.string().default(""),
 })
 type ReflectionResult = z.infer<typeof ReflectionResultSchema>
+
+let reflectionObjectGenerator: ReflectionObjectGenerator = (params) =>
+  generateObject(params as Parameters<typeof generateObject>[0]) as Promise<{ object: ReflectionResult }>
+
+function buildReflectionObjectParams(input: {
+  providerID: string
+  language: Parameters<typeof generateObject>[0]["model"]
+  system: string
+  prompt: string
+}) {
+  if (input.providerID === ProviderID.openai) {
+    return {
+      model: input.language,
+      schema: ReflectionResultSchema,
+      messages: [
+        {
+          role: "user" as const,
+          content: input.prompt,
+        },
+      ],
+      providerOptions: {
+        openai: {
+          instructions: input.system,
+          store: false,
+        },
+      },
+      temperature: 0.2,
+    } satisfies Parameters<typeof generateObject>[0]
+  }
+
+  return {
+    model: input.language,
+    schema: ReflectionResultSchema,
+    messages: [
+      {
+        role: "system" as const,
+        content: input.system,
+      },
+      {
+        role: "user" as const,
+        content: input.prompt,
+      },
+    ],
+    temperature: 0.2,
+    maxOutputTokens: 4_000,
+  } satisfies Parameters<typeof generateObject>[0]
+}
 
 function scanRisk(input: string):
   | {
@@ -420,8 +485,6 @@ export namespace Memory {
 
   export const Settings = z.object({
     enabled: z.boolean(),
-    cross_session_search_enabled: z.boolean(),
-    cross_session_search_scope: Scope,
     memory_reflection_model: z
       .object({
         providerID: z.string(),
@@ -468,16 +531,6 @@ export namespace Memory {
   })
   export type DailyMemory = z.infer<typeof DailyMemory>
 
-  export const SearchHit = z.object({
-    session_id: z.string(),
-    title: z.string(),
-    updated_at: z.number(),
-    summary: z.string(),
-    snippets: z.array(z.string()),
-    hits: z.number().int().nonnegative(),
-  })
-  export type SearchHit = z.infer<typeof SearchHit>
-
   export const MemoryPoolSource = z.enum(["user", "daily", "session"])
   export type MemoryPoolSource = z.infer<typeof MemoryPoolSource>
 
@@ -516,31 +569,6 @@ export namespace Memory {
     entries: ActiveEntry[]
   }
 
-  export const SessionPage = z.object({
-    session_id: z.string(),
-    title: z.string(),
-    page: z.number().int().positive(),
-    page_size: z.number().int().positive(),
-    has_more: z.boolean(),
-    next_page: z.number().int().positive().nullable(),
-    total_messages: z.number().int().nonnegative(),
-    messages: z.array(
-      z.object({
-        id: z.string(),
-        role: z.string(),
-        created_at: z.number().int().nonnegative(),
-        parts: z.array(
-          z.object({
-            type: z.string(),
-            text: z.string().optional(),
-            data: z.record(z.string(), z.unknown()).optional(),
-          }),
-        ),
-      }),
-    ),
-  })
-  export type SessionPage = z.infer<typeof SessionPage>
-
   export const WriteReason = z.enum(["reflection", "manual", "auto_write"])
   export type WriteReason = z.infer<typeof WriteReason>
 
@@ -560,18 +588,6 @@ export namespace Memory {
     async (map) => map.clear(),
   )
   const activeMemory = Instance.state(() => new Map<string, ActiveState>(), async (map) => map.clear())
-  const readGrant = Instance.state(
-    () =>
-      new Map<
-        string,
-        {
-          user_message_id: string
-          target_session_id: string
-          granted_at: number
-        }
-      >(),
-    async (map) => map.clear(),
-  )
 
   function enqueueEvents(sessionID: string, events: Event[]) {
     if (!events.length) return
@@ -597,8 +613,6 @@ export namespace Memory {
     const source = cfg.memory ?? {}
     return {
       enabled: source.enabled ?? true,
-      cross_session_search_enabled: source.cross_session_search_enabled ?? true,
-      cross_session_search_scope: source.cross_session_search_scope ?? "current_project",
       memory_reflection_model: source.memory_reflection_model,
     } satisfies Settings
   }
@@ -815,6 +829,22 @@ export namespace Memory {
     return buildPrompt(snapshot, entries).length
   }
 
+  function userProfileBaseline(snapshot: PreparedSnapshot) {
+    const userEntries = snapshot.entries.filter((entry) => entry.source === "user")
+    const explicit = userEntries.filter((entry) => entry.text.includes("[explicit]:"))
+    const inferred = userEntries.filter((entry) => entry.text.includes("[inferred]:"))
+    const selected: PoolEntry[] = []
+    let used = 0
+    for (const entry of [...explicit, ...inferred]) {
+      const next = `- ${entry.text}\n`.length
+      if (selected.length > 0 && used + next > USER_PROFILE_PROMPT_LIMIT) continue
+      selected.push(entry)
+      used += next
+      if (used >= USER_PROFILE_PROMPT_LIMIT) break
+    }
+    return selected
+  }
+
   function pruneActive(snapshot: PreparedSnapshot, entries: ActiveEntry[]) {
     const sorted = entries
       .toSorted((a, b) => {
@@ -860,12 +890,18 @@ export namespace Memory {
   }
 
   function buildPrompt(snapshot: PreparedSnapshot, activeEntries: ActiveEntry[]) {
-    if (!activeEntries.length) return ""
+    if (!snapshot.entries.length && !activeEntries.length) return ""
+    const profileEntries = userProfileBaseline(snapshot)
+    const profileIDs = new Set(profileEntries.map((entry) => entry.id))
+    const recallEntries = activeEntries.filter((entry) => !profileIDs.has(entry.id))
     const lines = [
       "<memory_context>",
       "<memory_policy>",
       "Long-term memory is prepared in a session memory pool, but only this memory_context is currently plugged into the model prompt.",
-      "Use memory_search when memory may be relevant. Search hits are silently added to active memory and will remain available for this session.",
+      "Stable USER.md profile entries are included here within a small cap; daily/session memory requires memory_search or automatic recall before injection.",
+      "Use memory_search when memory may be relevant. It is the only supported way to recall Aether memory.",
+      "Do not use read, glob, grep, bash, or other file tools to inspect Aether memory files such as USER.md or MEMORY.md.",
+      "Search hits are silently added to active memory and will remain available for this session.",
       "Use memory_write for durable-looking user preferences, project facts, or tasks. Writes go to short-term session memory first; daily reflection can consolidate them into daily long-term memory and USER.md.",
       "Use memory_reflect when the user explicitly asks for memory consolidation or long-term memory update.",
       "Priority order: current user instruction > explicit user profile/memory > inferred profile > recalled context.",
@@ -880,7 +916,8 @@ export namespace Memory {
       lines.push(`</${name}>`)
     }
 
-    pushSection("active_memory", activeEntries)
+    pushSection("user_profile", profileEntries)
+    pushSection("active_memory", recallEntries)
     lines.push("</memory_context>")
     return lines.join("\n")
   }
@@ -1243,14 +1280,25 @@ export namespace Memory {
         .join("\n\n"),
     ].join("\n")
 
-    const result = await generateObject({
-      model: language,
-      schema: ReflectionResultSchema,
+    const params = buildReflectionObjectParams({
+      providerID: model.providerID,
+      language,
       system,
       prompt,
-      temperature: 0.2,
-      maxOutputTokens: 4_000,
     })
+
+    if (model.providerID === ProviderID.openai) {
+      const result = streamObject({
+        ...params,
+        onError: () => {},
+      })
+      for await (const part of result.fullStream) {
+        if (part.type === "error") throw part.error
+      }
+      return await result.object
+    }
+
+    const result = await reflectionObjectGenerator(params)
     return result.object
   }
 
@@ -1387,7 +1435,7 @@ export namespace Memory {
       })
       return { run_id: runID, status: "success" as const, events, summary: reflected.summary }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = summarizeReflectionError(error)
       await writeReflectionRunLog({
         run_id: runID,
         status: "failed",
@@ -1403,324 +1451,23 @@ export namespace Memory {
   }
 
   export async function start(input: { session_id: string }) {
-    return prepare({ session_id: input.session_id, force: true })
+    return prepare({ session_id: input.session_id })
   }
 
-  function sessionSearchTokens(input: string) {
-    const seen = new Set<string>()
-    const entries = input
-      .split(/[\s,，;；/|、]+/u)
-      .map((token) => norm(token))
-      .map((token) => token.replace(/^[,，;；/|、]+|[,，;；/|、]+$/gu, ""))
-      .filter(Boolean)
-      .filter((token) => !/^[,，;；/|、]+$/u.test(token))
-
-    const tokens: string[] = []
-    for (const entry of entries) {
-      const key = entry.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      tokens.push(key)
-    }
-    return tokens
+  export function setReflectionObjectGeneratorForTest(next: ReflectionObjectGenerator) {
+    reflectionObjectGenerator = next
   }
 
-  function snippet(input: string, tokens: string[]) {
-    const text = norm(input)
-    if (!text) return ""
-    const low = text.toLowerCase()
-    let keyword = ""
-    let idx = -1
-    for (const token of tokens) {
-      const position = low.indexOf(token)
-      if (position < 0) continue
-      keyword = token
-      idx = position
-      break
-    }
-    if (idx < 0) return clip(text, 180)
-    const start = Math.max(0, idx - 70)
-    const end = Math.min(text.length, idx + keyword.length + 70)
-    const body = text.slice(start, end)
-    if (start === 0 && end === text.length) return body
-    if (start === 0) return `${body}...`
-    if (end === text.length) return `...${body}`
-    return `...${body}...`
+  export function resetReflectionObjectGeneratorForTest() {
+    reflectionObjectGenerator = (params) =>
+      generateObject(params as Parameters<typeof generateObject>[0]) as Promise<{ object: ReflectionResult }>
   }
 
-  export async function sessionSearch(input: { session_id: string; query: string; limit?: number; scope?: Scope }) {
-    const current = await settings()
-    if (!current.cross_session_search_enabled) return [] as SearchHit[]
-    const query = norm(input.query)
-    if (!query) return [] as SearchHit[]
-    const tokens = sessionSearchTokens(query)
-    if (!tokens.length) return [] as SearchHit[]
-
-    const limit = Math.max(1, Math.min(20, input.limit ?? 6))
-    const scope = input.scope ?? current.cross_session_search_scope
-    const scoped = sessionScopeFilter(scope)
-    const textClauseFor = (alias: string) =>
-      tokens.map(() => `lower(coalesce(json_extract(${alias}.data, '$.text'), '')) like lower(?)`).join(" or ")
-    const partTextClause = textClauseFor("p")
-    const subqueryTextClause = textClauseFor("p2")
-    const titleClause = tokens.map(() => "lower(coalesce(s.title, '')) like lower(?)").join(" or ")
-    const textArgs = tokens.map((token) => `%${token}%`)
-    const titleArgs = tokens.map((token) => `%${token}%`)
-    const sql = [
-      "select * from (",
-      "select s.id as session_id, s.title as title, s.time_updated as updated_at,",
-      "m.id as message_id, m.time_created as created_at,",
-      "json_extract(p.data, '$.text') as text,",
-      "json_extract(p.data, '$.metadata.memory_receipt') as memory_receipt",
-      "from part p",
-      "join message m on m.id = p.message_id",
-      "join session s on s.id = m.session_id",
-      "where json_extract(p.data, '$.type') = 'text'",
-      "and coalesce(json_extract(p.data, '$.metadata.memory_receipt'), 0) != 1",
-      `and (${partTextClause})`,
-      "and s.id != ?",
-      "and s.time_archived is null",
-      scoped.sql,
-      "union all",
-      "select s.id as session_id, s.title as title, s.time_updated as updated_at,",
-      "null as message_id, 0 as created_at,",
-      "null as text,",
-      "0 as memory_receipt",
-      "from session s",
-      "where s.id != ?",
-      "and s.time_archived is null",
-      scoped.sql,
-      `and (${titleClause})`,
-      "and not exists (",
-      "  select 1",
-      "  from message m2",
-      "  join part p2 on p2.message_id = m2.id",
-      "  where m2.session_id = s.id",
-      "  and json_extract(p2.data, '$.type') = 'text'",
-      "  and coalesce(json_extract(p2.data, '$.metadata.memory_receipt'), 0) != 1",
-      `  and (${subqueryTextClause})`,
-      ")",
-      ") rows",
-      "order by rows.updated_at desc, rows.created_at desc",
-      "limit ?",
-    ]
-      .filter(Boolean)
-      .join("\n")
-
-    const rows = Database.Client().$client.prepare(sql).all(
-      ...textArgs,
-      input.session_id,
-      ...scoped.args,
-      input.session_id,
-      ...scoped.args,
-      ...titleArgs,
-      ...textArgs,
-      limit * 24,
-    ) as Array<{
-      session_id: string
-      title: string
-      updated_at: number
-      message_id: string | null
-      created_at: number | null
-      text: string | null
-      memory_receipt: number | string | boolean | null
-    }>
-
-    const grouped = new Map<string, SearchHit>()
-    const keywordMatches = new Map<string, Set<string>>()
-    for (const row of rows) {
-      if (receiptMark(row.memory_receipt)) continue
-      const text = norm(row.text ?? "")
-      const title = norm(row.title ?? "")
-      const lowText = text.toLowerCase()
-      const lowTitle = title.toLowerCase()
-      const textMatched = text ? tokens.filter((token) => lowText.includes(token)) : []
-      const titleMatched = title ? tokens.filter((token) => lowTitle.includes(token)) : []
-      const matched = [...new Set([...textMatched, ...titleMatched])]
-      if (!matched.length) continue
-
-      const keywords = keywordMatches.get(row.session_id) ?? new Set<string>()
-      for (const token of matched) keywords.add(token)
-      keywordMatches.set(row.session_id, keywords)
-
-      const existing = grouped.get(row.session_id)
-      const messageHits = textMatched.length > 0 ? 1 : 0
-      if (!existing) {
-        grouped.set(row.session_id, {
-          session_id: row.session_id,
-          title: row.title || "Untitled session",
-          updated_at: row.updated_at,
-          summary: "",
-          snippets: textMatched.length > 0 ? [snippet(text, textMatched)].filter(Boolean) : [],
-          hits: messageHits,
-        })
-        continue
-      }
-      existing.hits += messageHits
-      if (textMatched.length > 0 && existing.snippets.length < 3) {
-        const hit = snippet(text, textMatched)
-        if (hit && !existing.snippets.includes(hit)) existing.snippets.push(hit)
-      }
-    }
-
-    return [...grouped.values()]
-      .sort((a, b) => b.updated_at - a.updated_at || b.hits - a.hits)
-      .slice(0, limit)
-      .map((item) => {
-        const keywordCount = keywordMatches.get(item.session_id)?.size ?? 0
-        const summary =
-          item.hits > 0
-            ? `Matched ${item.hits} ${item.hits === 1 ? "message" : "messages"} across ${keywordCount} keywords. Ordered by recency.`
-            : `Matched title across ${keywordCount} keywords. Ordered by recency.`
-        return {
-          ...item,
-          summary,
-        }
-      })
-  }
-
-  export async function sessionRead(input: { session_id: string; page: number; page_size: number; scope?: Scope }) {
-    const targetSessionID = SessionID.make(input.session_id)
-    const current = await settings()
-    if (!current.cross_session_search_enabled) throw new Error("Cross-session search is disabled by settings.")
-    const scope = input.scope ?? current.cross_session_search_scope
-    const scoped = sessionScopeFilter(scope)
-
-    const session = Database.use((db) =>
-      db
-        .select()
-        .from(SessionTable)
-        .where(and(eq(SessionTable.id, targetSessionID), isNull(SessionTable.time_archived)))
-        .get(),
-    )
-    if (!session) throw new Error(`Session not found: ${input.session_id}`)
-    if (!scoped.match(session)) throw new Error("The requested session is outside the current project scope.")
-
-    const page = Math.max(1, input.page)
-    const pageSize = Math.max(1, Math.min(100, input.page_size))
-    const offset = (page - 1) * pageSize
-
-    const total =
-      Database.use((db) =>
-        db.select({ total: count() }).from(MessageTable).where(eq(MessageTable.session_id, targetSessionID)).get(),
-      )?.total ?? 0
-    const messages = Database.use((db) =>
-      db
-        .select()
-        .from(MessageTable)
-        .where(eq(MessageTable.session_id, targetSessionID))
-        .orderBy(asc(MessageTable.time_created), asc(MessageTable.id))
-        .limit(pageSize)
-        .offset(offset)
-        .all(),
-    )
-    const ids = messages.map((row) => row.id)
-    const parts =
-      ids.length === 0
-        ? []
-        : Database.use((db) =>
-            db
-              .select()
-              .from(PartTable)
-              .where(inArray(PartTable.message_id, ids))
-              .orderBy(asc(PartTable.message_id), asc(PartTable.id))
-              .all(),
-          )
-
-    const grouped = new Map<string, Array<{ type: string; text?: string; data?: Record<string, unknown> }>>()
-    for (const row of parts) {
-      const data = row.data as Record<string, unknown>
-      const type = typeof data.type === "string" ? data.type : "unknown"
-      const text = typeof data.text === "string" ? data.text : undefined
-      const list = grouped.get(row.message_id) ?? []
-      list.push({ type, text, data: text ? undefined : data })
-      grouped.set(row.message_id, list)
-    }
-
-    const hasMore = offset + messages.length < total
-    return {
-      session_id: input.session_id,
-      title: session.title,
-      page,
-      page_size: pageSize,
-      has_more: hasMore,
-      next_page: hasMore ? page + 1 : null,
-      total_messages: total,
-      messages: messages.map((message) => {
-        const info = message.data as Record<string, unknown>
-        return {
-          id: message.id,
-          role: typeof info.role === "string" ? info.role : "unknown",
-          created_at: message.time_created,
-          parts: grouped.get(message.id) ?? [],
-        }
-      }),
-    } satisfies SessionPage
-  }
-
-  function continuationRead(text: string) {
-    const low = text.toLowerCase()
-    const rules = [/\b(next|continue|more)\b.{0,16}\b(page|messages?|history|results?)?\b/, /\b(page)\s*\d+\b/, /(下一页|继续|更多|后续)/]
-    return rules.some((rule) => rule.test(low))
-  }
-
-  export function explicitRead(
-    messages: Array<{ info: { id?: string; role: string }; parts: Array<{ type: string; text?: string }> }>,
-  ) {
-    const user = messages.findLast((message) => message.info.role === "user")
-    if (!user) return false
-    const text = user.parts
-      .filter((part) => part.type === "text" && typeof part.text === "string")
-      .map((part) => part.text ?? "")
-      .join(" ")
-      .toLowerCase()
-    if (!text) return false
-    const rules = [
-      /\b(full|entire|raw|complete|verbatim|exact)\b.{0,20}\b(session|conversation|chat|history)\b/,
-      /\b(read|show|open)\b.{0,20}\b(full|entire|raw|complete)\b/,
-      /(完整|原文|全部|全量|逐条|详细).{0,12}(会话|对话|历史|内容)/,
-    ]
-    return rules.some((rule) => rule.test(text))
-  }
-
-  export function canSessionRead(input: {
-    actor_session_id: string
-    target_session_id: string
-    page: number
-    messages: Array<{ info: { id?: string; role: string }; parts: Array<{ type: string; text?: string }> }>
-  }) {
-    const user = input.messages.findLast((message) => message.info.role === "user")
-    if (!user) return false
-    const userMessageID = user.info.id ?? "__unknown__"
-    const text = user.parts
-      .filter((part) => part.type === "text" && typeof part.text === "string")
-      .map((part) => part.text ?? "")
-      .join(" ")
-      .trim()
-
-    if (explicitRead(input.messages)) {
-      // Continuation grant is bound to actor session + target session to prevent session_read abuse.
-      readGrant().set(input.actor_session_id, {
-        user_message_id: userMessageID,
-        target_session_id: input.target_session_id,
-        granted_at: Date.now(),
-      })
-      return true
-    }
-
-    const grant = readGrant().get(input.actor_session_id)
-    if (!grant) return false
-    if (grant.target_session_id !== input.target_session_id) return false
-    if (grant.user_message_id === userMessageID) return true
-    if (input.page > 1 && continuationRead(text)) {
-      readGrant().set(input.actor_session_id, {
-        user_message_id: userMessageID,
-        target_session_id: input.target_session_id,
-        granted_at: Date.now(),
-      })
-      return true
-    }
-    return false
+  export function buildReflectionObjectParamsForTest(input: { providerID: string; system: string; prompt: string }) {
+    return buildReflectionObjectParams({
+      ...input,
+      language: "stub-model" as Parameters<typeof generateObject>[0]["model"],
+    })
   }
 
   export function format(events: Event[]) {

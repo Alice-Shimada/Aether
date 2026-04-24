@@ -12,7 +12,7 @@ The design intentionally avoids scoped project/workspace `MEMORY.md` as a long-t
 
 The current memory system has three runtime layers:
 
-- L1 active memory: the prompt content directly injected into the current session.
+- L1 active memory: the prompt content directly injected into the current session. Stable `USER.md` profile entries are included as a small capped baseline; daily/session memory is injected only after search or automatic recall.
 - L2 prepared pool: the session-local searchable memory pool used by `memory_search` and automatic recall.
 - L3 disk store: files under the Aether data memory directory.
 
@@ -163,14 +163,14 @@ The memory config is simplified to:
 ```ts
 memory: {
   enabled: boolean
-  cross_session_search_enabled: boolean
-  cross_session_search_scope: "current_project" | "global"
   memory_reflection_model?: {
     providerID: string
     modelID: string
   }
 }
 ```
+
+`session_search` and `session_read` are intentionally not part of the memory tool surface. The model should recall durable context from memory files only, not from old session message bodies.
 
 Removed memory config fields:
 

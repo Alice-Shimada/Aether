@@ -17,12 +17,11 @@
 - `memory_reload` 会刷新 L1/L2，适合用户手动编辑记忆文件后使用。
 - 每日 reflection 只处理当天产生或修改过的 short-term session memory；没有输入时跳过。
 - 总开关 `memory.enabled=false` 时，memory 工具、召回和内置 daily reflection cron 都被视为关闭。
+- `session_search` 和 `session_read` 已移除，agent 不再读取旧 session 正文。
 
 ## 当前有效配置
 
 - `memory.enabled`
-- `memory.cross_session_search_enabled`
-- `memory.cross_session_search_scope`
 - `memory.memory_reflection_model`
 
 以下旧字段会被清理：

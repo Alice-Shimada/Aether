@@ -15,6 +15,38 @@ function renderEntries(items: string[]) {
   return items.map((item, idx) => `${idx + 1}. ${item}`).join("\n")
 }
 
+function latestUserText(ctx: Tool.Context) {
+  for (const msg of ctx.messages.toReversed()) {
+    if (msg.info.role !== "user") continue
+    const text = msg.parts
+      .flatMap((part) => {
+        if (part.type !== "text" || part.ignored || part.synthetic) return []
+        return [part.text]
+      })
+      .join("\n")
+      .trim()
+    if (text) return text
+  }
+  return ""
+}
+
+function hasExplicitMemoryManagementIntent(ctx: Tool.Context) {
+  const text = latestUserText(ctx)
+  if (!text) return false
+  return [
+    /\b(show|list|read|display|inspect|manage|review|dump|export|edit|delete|remove|open)\b[\s\S]{0,80}\b(memory|memories|user profile|profile|USER\.md|MEMORY\.md)\b/i,
+    /\b(memory|memories|user profile|profile|USER\.md|MEMORY\.md)\b[\s\S]{0,80}\b(show|list|read|display|inspect|manage|review|dump|export|edit|delete|remove|open)\b/i,
+    /(查看|列出|显示|读取|浏览|管理|检查|导出|编辑|删除|修改|打开)[\s\S]{0,30}(记忆|画像|用户画像|USER\.md|MEMORY\.md)/,
+    /(记忆|画像|用户画像|USER\.md|MEMORY\.md)[\s\S]{0,30}(查看|列出|显示|读取|浏览|管理|检查|导出|编辑|删除|修改|打开)/,
+  ].some((pattern) => pattern.test(text))
+}
+
+function memoryManagementRequired() {
+  return blocked(
+    "memory_read and memory_list are only for explicit memory-management requests. Use memory_search for memory recall.",
+  )
+}
+
 export const MemoryWriteTool = Tool.define("memory_write", {
   description: [
     "Write a short-term session memory note for later recall and reflection.",
@@ -76,12 +108,16 @@ export const MemoryWriteTool = Tool.define("memory_write", {
 })
 
 export const MemoryReadTool = Tool.define("memory_read", {
-  description: "Read durable USER entries or recent daily MEMORY entries.",
+  description: [
+    "Read durable USER entries or recent daily MEMORY entries for explicit memory-management requests.",
+    "Do not use this for ordinary memory recall; use memory_search instead.",
+  ].join("\n"),
   parameters: z.object({
     store: Memory.Store,
     index: z.number().int().positive().optional(),
   }),
-  async execute(input) {
+  async execute(input, ctx) {
+    if (!hasExplicitMemoryManagementIntent(ctx)) return memoryManagementRequired()
     const store = await Memory.read(input.store)
     if (!store.enabled) return blocked(`${store.store.toUpperCase()} store is disabled by settings.`)
     if (input.index) {
@@ -102,9 +138,13 @@ export const MemoryReadTool = Tool.define("memory_read", {
 })
 
 export const MemoryListTool = Tool.define("memory_list", {
-  description: "List USER and MEMORY stores with usage and entries.",
+  description: [
+    "List USER and MEMORY stores with usage and entries for explicit memory-management requests.",
+    "Do not use this for ordinary memory recall; use memory_search instead.",
+  ].join("\n"),
   parameters: z.object({}),
-  async execute() {
+  async execute(_input, ctx) {
+    if (!hasExplicitMemoryManagementIntent(ctx)) return memoryManagementRequired()
     const stores = await Memory.list()
     const lines = [`MEMORY (${stores.memory.used}/${stores.memory.limit})`, renderEntries(stores.memory.entries)]
     if (stores.user.enabled) {
@@ -114,6 +154,7 @@ export const MemoryListTool = Tool.define("memory_list", {
       title: "Memory stores",
       output: lines.join("\n"),
       metadata: {
+        blocked: false,
         user_enabled: stores.user.enabled,
         user_used: stores.user.used,
         user_limit: stores.user.limit,
@@ -128,6 +169,8 @@ export const MemorySearchTool = Tool.define("memory_search", {
   description: [
     "Search the current session prepared memory pool by keyword.",
     "The pool is initialized from USER.md, recent daily memory, and current session short-term memory.",
+    "This is the only supported tool for recalling Aether memory.",
+    "Do not use read, glob, grep, bash, or other file tools to inspect Aether memory files.",
     "Search accepts separated keywords; any keyword match is a candidate.",
     "Hits are silently added to active memory and will remain injected for this session.",
   ].join("\n"),
@@ -195,101 +238,6 @@ export const MemoryReflectTool = Tool.define("memory_reflect", {
         status: result.status,
         run_id: result.run_id,
         count: result.events.length,
-      },
-    }
-  },
-})
-
-export const SessionSearchTool = Tool.define("session_search", {
-  description: [
-    "Search historical sessions using existing message text records.",
-    "Use this when users reference previous discussions, decisions, or work history.",
-    "Results include summary and snippets. session_read remains explicit-only.",
-  ].join("\n"),
-  parameters: z.object({
-    query: z.string(),
-    limit: z.number().int().positive().optional(),
-    scope: Memory.Scope.optional(),
-  }),
-  async execute(input, ctx) {
-    const hits = await Memory.sessionSearch({
-      session_id: ctx.sessionID,
-      query: input.query,
-      limit: input.limit,
-      scope: input.scope,
-    })
-    if (!hits.length) return { title: "Session search", output: "No matching sessions found.", metadata: { count: 0 } }
-    return {
-      title: "Session search",
-      output: hits
-        .map((hit, idx) =>
-          [
-            `${idx + 1}. ${hit.title} (${hit.session_id})`,
-            `Summary: ${hit.summary}`,
-            ...hit.snippets.map((snippet, i) => `Snippet ${i + 1}: ${snippet}`),
-          ].join("\n"),
-        )
-        .join("\n\n"),
-      metadata: { count: hits.length },
-    }
-  },
-})
-
-export const SessionReadTool = Tool.define("session_read", {
-  description: [
-    "Read paginated full message history for a specific session.",
-    "This tool is restricted and should only be used when the user explicitly asks for full/raw history.",
-  ].join("\n"),
-  parameters: z.object({
-    session_id: z.string(),
-    page: z.number().int().positive().default(1),
-    page_size: z.number().int().positive().max(100).default(20),
-    scope: Memory.Scope.optional(),
-  }),
-  async execute(input, ctx) {
-    if (
-      !Memory.canSessionRead({
-        actor_session_id: ctx.sessionID,
-        target_session_id: input.session_id,
-        page: input.page,
-        messages: ctx.messages,
-      })
-    ) {
-      return blocked(
-        "session_read is restricted: explicit user request for full/raw history is required before reading pages.",
-      )
-    }
-
-    const page = await Memory.sessionRead(input)
-    const lines = [
-      `Session: ${page.title} (${page.session_id})`,
-      `Page: ${page.page}`,
-      `Page size: ${page.page_size}`,
-      `Has more: ${page.has_more ? "yes" : "no"}`,
-      `Next page: ${page.next_page ?? "-"}`,
-      `Total messages: ${page.total_messages}`,
-      "",
-      ...page.messages.map((message) =>
-        [
-          `[${message.role}] ${message.id}`,
-          ...message.parts.map((part) => {
-            if (part.text) return `- (${part.type}) ${part.text}`
-            if (part.data) return `- (${part.type}) ${JSON.stringify(part.data)}`
-            return `- (${part.type})`
-          }),
-        ].join("\n"),
-      ),
-    ]
-
-    return {
-      title: "Session page",
-      output: lines.join("\n\n"),
-      metadata: {
-        blocked: false,
-        page: page.page,
-        page_size: page.page_size,
-        has_more: page.has_more,
-        next_page: page.next_page,
       },
     }
   },

@@ -718,7 +718,7 @@ export namespace SessionPrompt {
           return [part.text]
         })
         .join("\n")
-      if (lastUserText) await Memory.autoRecall({ session_id: sessionID, query: lastUserText })
+      if (step === 1 && lastUserText) await Memory.autoRecall({ session_id: sessionID, query: lastUserText })
       const memory = await Memory.activePrompt({ session_id: sessionID })
 
       // Build system prompt, adding structured output instruction if needed

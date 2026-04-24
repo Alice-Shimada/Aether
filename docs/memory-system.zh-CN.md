@@ -4,8 +4,8 @@
 
 ## 1. 三层缓存
 
-- L1：active memory prompt。只有被自动召回、`memory_search` 命中、或本轮 `memory_write` 写入的条目会进入模型 system prompt，约 4000 字符上限。
-- L2：session memory pool。会话启动时从磁盘准备，但默认不注入；`memory_search` 只查这一层。
+- L1：active memory prompt。`USER.md` 中的稳定用户画像会以小上限 baseline 注入；daily/session 记忆只有被自动召回、`memory_search` 命中、或本轮 `memory_write` 写入后才进入模型 system prompt，整体约 4000 字符上限。
+- L2：session memory pool。会话启动时从磁盘准备；`USER.md` 用于 L1 baseline 与搜索，daily/session 记忆默认不注入，只由 `memory_search` 或自动召回使用。
 - L3：磁盘冷存储。包含 `USER.md`、daily memory、当前 session short-term memory、reflection run log。
 
 ## 2. 磁盘路径
@@ -31,7 +31,7 @@ kind[source]: content
 
 ## 4. 会话工作流
 
-- 会话启动时只构建 L2 pool，不全量注入长期记忆。
+- 会话启动时构建 L2 pool，并将 `USER.md` 画像以小上限注入 L1；daily/session 长期内容不全量注入。
 - 每轮模型调用前，会根据最新用户消息执行最多 5 条自动召回。
 - `memory_search` 支持常见分隔符拆分多个关键词，任意关键词命中即候选。
 - 搜索命中会静默加入 L1，并在本 session 后续持续注入。
@@ -49,9 +49,9 @@ kind[source]: content
 当前有效字段：
 
 - `memory.enabled`：启用记忆工具、召回与内置 daily reflection cron，默认 `true`。
-- `memory.cross_session_search_enabled`：启用 `session_search`，默认 `true`。
-- `memory.cross_session_search_scope`：`current_project | global`，默认 `current_project`。
 - `memory.memory_reflection_model`：可选，指定 reflection 使用的模型。
+
+`session_search` 和 `session_read` 已移除；agent 不再读取旧 session 正文，召回内容只来自 memory files。
 
 已废弃字段会在配置加载时清理：
 

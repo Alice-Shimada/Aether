@@ -1234,14 +1234,6 @@ export namespace Config {
       memory: z
         .object({
           enabled: z.boolean().optional().describe("Enable memory tools, prompt recall, and memory reflection (default: true)"),
-          cross_session_search_enabled: z
-            .boolean()
-            .optional()
-            .describe("Enable cross-session search tools (default: true)"),
-          cross_session_search_scope: z
-            .enum(["current_project", "global"])
-            .optional()
-            .describe("Default cross-session search scope (default: current_project)"),
           memory_reflection_model: z
             .object({
               providerID: z.string(),

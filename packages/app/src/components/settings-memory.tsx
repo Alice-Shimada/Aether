@@ -1,7 +1,6 @@
 import { type Component, type JSXElement, For, Show, createMemo, createResource } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
-import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
 import { showToast } from "@opencode-ai/ui/toast"
 import type { Config } from "@opencode-ai/sdk/v2/client"
@@ -10,14 +9,11 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { SettingsList } from "./settings-list"
 
-type MemoryScope = "current_project" | "global"
 type UserProfileSource = "explicit" | "inferred"
 type UserProfileType = "fact" | "preference" | "task"
 
 type MemoryCfg = {
   enabled: boolean
-  cross_session_search_enabled: boolean
-  cross_session_search_scope: MemoryScope
 }
 
 type MemoryStore = {
@@ -72,8 +68,6 @@ function readCfg(input: Config): MemoryCfg {
   const src = (typeof root.memory === "object" && root.memory ? root.memory : {}) as Record<string, unknown>
   return {
     enabled: readBool(src, "enabled", true),
-    cross_session_search_enabled: readBool(src, "cross_session_search_enabled", true),
-    cross_session_search_scope: src.cross_session_search_scope === "global" ? "global" : "current_project",
   }
 }
 
@@ -100,8 +94,6 @@ function splitUserEntries(entries: string[]) {
 function toMemoryPatch(patch: Partial<MemoryCfg>): Partial<NonNullable<Config["memory"]>> {
   const next: Record<string, unknown> = {}
 
-  if ("cross_session_search_enabled" in patch) next.cross_session_search_enabled = patch.cross_session_search_enabled
-  if ("cross_session_search_scope" in patch) next.cross_session_search_scope = patch.cross_session_search_scope
   if ("enabled" in patch) next.enabled = patch.enabled
 
   return next as Partial<NonNullable<Config["memory"]>>
@@ -155,14 +147,6 @@ export const SettingsMemory: Component = () => {
     },
   )
 
-  const scope = createMemo(
-    () =>
-      [
-        { value: "current_project", label: language.t("settings.memory.scope.currentProject") },
-        { value: "global", label: language.t("settings.memory.scope.global") },
-      ] satisfies Array<{ value: MemoryScope; label: string }>,
-  )
-
   const profileEntries = createMemo(() => splitUserEntries(data()?.user.entries ?? []))
 
   let updateSeq = 0
@@ -210,31 +194,6 @@ export const SettingsMemory: Component = () => {
               description={language.t("settings.memory.row.enabled.description")}
             >
               <Switch checked={cfg().enabled} onChange={(value) => void update({ enabled: value })} />
-            </Row>
-            <Row
-              title={language.t("settings.memory.row.crossSessionEnabled.title")}
-              description={language.t("settings.memory.row.crossSessionEnabled.description")}
-            >
-              <Switch
-                checked={cfg().cross_session_search_enabled}
-                onChange={(value) => void update({ cross_session_search_enabled: value })}
-              />
-            </Row>
-            <Row
-              title={language.t("settings.memory.row.scope.title")}
-              description={language.t("settings.memory.row.scope.description")}
-            >
-              <Select
-                data-action="settings-memory-scope"
-                options={scope()}
-                value={(item) => item.value}
-                label={(item) => item.label}
-                current={scope().find((item) => item.value === cfg().cross_session_search_scope)}
-                onSelect={(item) => item && void update({ cross_session_search_scope: item.value })}
-                variant="secondary"
-                size="small"
-                triggerVariant="settings"
-              />
             </Row>
           </SettingsList>
           <Show when={data()?.active}>

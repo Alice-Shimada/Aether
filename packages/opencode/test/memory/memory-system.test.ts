@@ -3,10 +3,21 @@ import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { Memory } from "../../src/memory"
 import { Session } from "../../src/session"
-import { MessageID, PartID, SessionID } from "../../src/session/schema"
-import { ModelID, ProviderID } from "../../src/provider/schema"
 import { Filesystem } from "../../src/util/filesystem"
 import type { Config } from "../../src/config/config"
+import { Global } from "../../src/global"
+import {
+  assertNotMemoryStoragePath,
+  isMemoryStoragePath,
+  memoryStorageRoot,
+  memoryStorageExcludeGlobs,
+} from "../../src/tool/memory-file-guard"
+import path from "path"
+import { ReadTool } from "../../src/tool/read"
+import { GlobTool } from "../../src/tool/glob"
+import { GrepTool } from "../../src/tool/grep"
+import { BashTool } from "../../src/tool/bash"
+import { MemoryListTool, MemoryReadTool, MemorySearchTool } from "../../src/tool/memory"
 
 function todayKey() {
   const date = new Date()
@@ -14,64 +25,92 @@ function todayKey() {
   return date.toISOString().slice(0, 10)
 }
 
+function toolContext(input: { userText?: string } = {}) {
+  return {
+    sessionID: "ses_memory_guard",
+    messageID: "msg_memory_guard",
+    callID: "call_memory_guard",
+    abort: new AbortController().signal,
+    extra: {},
+    agent: "build",
+    messages: input.userText
+      ? [
+          {
+            info: { id: "msg_user_memory_guard", sessionID: "ses_memory_guard", role: "user" },
+            parts: [
+              {
+                id: "part_user_memory_guard",
+                sessionID: "ses_memory_guard",
+                messageID: "msg_user_memory_guard",
+                type: "text",
+                text: input.userText,
+              },
+            ],
+          },
+        ]
+      : [],
+    metadata: async () => undefined,
+    ask: async () => undefined,
+  } as any
+}
+
 describe("memory + user profile backend", () => {
-  test("keeps current_project isolation for non-git directories", async () => {
-    await using left = await tmpdir()
-    await using right = await tmpdir()
+  test("generic file tools are guarded from Aether memory storage", async () => {
+    const memoryFile = path.join(Global.Path.data, "memory", "user", "USER.md")
+    expect(isMemoryStoragePath(memoryFile)).toBe(true)
+    expect(() => assertNotMemoryStoragePath("read", memoryFile)).toThrow("Use memory_search")
+    expect(memoryStorageExcludeGlobs(Global.Path.data)).toContain("!memory/**")
 
-    let leftSessionID = ""
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: left.path,
+      directory: tmp.path,
       fn: async () => {
-        await Memory.write({
-          session_id: "left_scope",
-          store: "memory",
-          action: "add",
-          value: "Left workspace specific memory",
-          reason: "manual",
-        })
-
-        const target = await Session.create({})
-        leftSessionID = target.id
-        const userID = MessageID.ascending()
-        await Session.updateMessage({
-          id: userID,
-          sessionID: target.id,
-          role: "user",
-          time: { created: Date.now() - 2_000 },
-          agent: "build",
-          model: { providerID: ProviderID.opencode, modelID: ModelID.make("gpt-5") },
-        })
-        await Session.updatePart({
-          id: PartID.ascending(),
-          sessionID: target.id,
-          messageID: userID,
-          type: "text",
-          text: "Scope isolation marker alpha123",
-        })
+        await expect((await ReadTool.init()).execute({ filePath: memoryFile }, toolContext())).rejects.toThrow(
+          "Use memory_search",
+        )
+        await expect(
+          (await GlobTool.init()).execute({ pattern: "**/MEMORY.md", path: memoryStorageRoot() }, toolContext()),
+        ).rejects.toThrow("Use memory_search")
+        await expect(
+          (await GrepTool.init()).execute({ pattern: "anything", path: memoryStorageRoot() }, toolContext()),
+        ).rejects.toThrow("Use memory_search")
+        await expect(
+          (await BashTool.init()).execute({ command: `stat "${memoryFile}"`, description: "Stats memory file" }, toolContext()),
+        ).rejects.toThrow("Use memory_search")
+        await expect(
+          (await BashTool.init()).execute(
+            { command: "find ~/.local/share/aether -name '*.md'", description: "Find Aether markdown" },
+            toolContext(),
+          ),
+        ).rejects.toThrow("Use memory_search")
       },
     })
+  })
 
+  test("memory listing tools are gated to explicit management requests", async () => {
+    await using tmp = await tmpdir({ git: true })
     await Instance.provide({
-      directory: right.path,
+      directory: tmp.path,
       fn: async () => {
-        const rightMemory = await Memory.read("memory")
-        expect(rightMemory.entries).not.toContain("Left workspace specific memory")
+        const tool = await MemoryListTool.init()
+        const recall = await tool.execute({}, toolContext({ userText: "What do I remember about cron?" }))
+        expect(recall.metadata.blocked).toBe(true)
+        expect(recall.output).toContain("Use memory_search")
 
-        const current = await Session.create({})
-        const currentScope = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "alpha123",
-          scope: "current_project",
-        })
-        expect(currentScope.some((hit) => hit.session_id === leftSessionID)).toBe(false)
+        const management = await tool.execute({}, toolContext({ userText: "Please list all memory entries." }))
+        expect(management.title).toBe("Memory stores")
 
-        const globalScope = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "alpha123",
-          scope: "global",
-        })
-        expect(globalScope.some((hit) => hit.session_id === leftSessionID)).toBe(true)
+        const readTool = await MemoryReadTool.init()
+        const blockedRead = await readTool.execute(
+          { store: "memory" },
+          toolContext({ userText: "Do I remember anything about cron?" }),
+        )
+        expect(blockedRead.metadata.blocked).toBe(true)
+        const allowedRead = await readTool.execute(
+          { store: "memory" },
+          toolContext({ userText: "Please display the memory store." }),
+        )
+        expect(allowedRead.title).toBe("Memory store")
       },
     })
   })
@@ -101,170 +140,6 @@ describe("memory + user profile backend", () => {
         const result = await Memory.reflect({ scope: "current_scope", dry_run: true })
         expect(result.status).toBe("skipped")
         expect(result.summary).toBe("No short-term memory files to reflect")
-      },
-    })
-  })
-
-  test("session_search supports multi-keyword matching with session-level merge and recency-first ordering", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const appendText = async (sessionID: SessionID, text: string) => {
-          const messageID = MessageID.ascending()
-          await Session.updateMessage({
-            id: messageID,
-            sessionID,
-            role: "user",
-            time: { created: Date.now() },
-            agent: "build",
-            model: { providerID: ProviderID.opencode, modelID: ModelID.make("gpt-5") },
-          })
-          await Session.updatePart({
-            id: PartID.ascending(),
-            sessionID,
-            messageID,
-            type: "text",
-            text,
-          })
-        }
-
-        const older = await Session.create({ title: "Older worklog" })
-        await appendText(older.id, "alpha implementation details")
-        await appendText(older.id, "beta test follow-ups")
-
-        await new Promise((resolve) => setTimeout(resolve, 5))
-
-        const recent = await Session.create({ title: "Recent checkpoint" })
-        await appendText(recent.id, "alpha regression note")
-
-        const current = await Session.create({ title: "Current conversation" })
-        const hits = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "alpha，beta;alpha/、beta|",
-          scope: "current_project",
-          limit: 10,
-        })
-
-        expect(hits.filter((item) => item.session_id === older.id).length).toBe(1)
-        expect(hits.filter((item) => item.session_id === recent.id).length).toBe(1)
-        expect(hits[0]?.session_id).toBe(recent.id)
-
-        const olderHit = hits.find((item) => item.session_id === older.id)
-        expect(olderHit).toBeDefined()
-        expect(olderHit?.hits).toBe(2)
-        expect(olderHit?.summary).toContain("Matched 2 messages across 2 keywords. Ordered by recency.")
-        expect((olderHit?.snippets.length ?? 0) <= 3).toBe(true)
-        expect(new Set(olderHit?.snippets ?? []).size).toBe(olderHit?.snippets.length ?? 0)
-      },
-    })
-  })
-
-  test("session_search supports title-only matches", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const target = await Session.create({ title: "Phoenix roadmap planning" })
-
-        const current = await Session.create({ title: "Current conversation" })
-        const hits = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "phoenix",
-          scope: "current_project",
-        })
-
-        const match = hits.find((item) => item.session_id === target.id)
-        expect(match).toBeDefined()
-        expect(match?.title).toContain("Phoenix roadmap planning")
-        expect(match?.snippets).toEqual([])
-        expect(match?.hits).toBe(0)
-        expect(match?.summary).toBe("Matched title across 1 keywords. Ordered by recency.")
-      },
-    })
-  })
-
-  test("session_search title-only matches do not inflate hits from unrelated body text", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const appendText = async (sessionID: SessionID, text: string) => {
-          const messageID = MessageID.ascending()
-          await Session.updateMessage({
-            id: messageID,
-            sessionID,
-            role: "user",
-            time: { created: Date.now() },
-            agent: "build",
-            model: { providerID: ProviderID.opencode, modelID: ModelID.make("gpt-5") },
-          })
-          await Session.updatePart({
-            id: PartID.ascending(),
-            sessionID,
-            messageID,
-            type: "text",
-            text,
-          })
-        }
-
-        const target = await Session.create({ title: "Phoenix roadmap planning" })
-        await appendText(target.id, "Roadmap notes with no keyword hit in body text.")
-        await appendText(target.id, "Additional context that should not appear as matched snippet.")
-
-        const current = await Session.create({ title: "Current conversation" })
-        const hits = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "phoenix",
-          scope: "current_project",
-        })
-
-        const match = hits.find((item) => item.session_id === target.id)
-        expect(match).toBeDefined()
-        expect(match?.hits).toBe(0)
-        expect(match?.snippets).toEqual([])
-        expect(match?.summary).toBe("Matched title across 1 keywords. Ordered by recency.")
-      },
-    })
-  })
-
-  test("session_search title-only fallback includes sessions with receipt-only text parts", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const target = await Session.create({ title: "Hydra planning receipt-only" })
-        const messageID = MessageID.ascending()
-        await Session.updateMessage({
-          id: messageID,
-          sessionID: target.id,
-          role: "user",
-          time: { created: Date.now() },
-          agent: "build",
-          model: { providerID: ProviderID.opencode, modelID: ModelID.make("gpt-5") },
-        })
-        await Session.updatePart({
-          id: PartID.ascending(),
-          sessionID: target.id,
-          messageID,
-          type: "text",
-          text: "Memory updates: - [MEMORY][add/manual] some receipt text",
-          metadata: { memory_receipt: true },
-        })
-
-        const current = await Session.create({ title: "Current conversation" })
-        const hits = await Memory.sessionSearch({
-          session_id: current.id,
-          query: "hydra",
-          scope: "current_project",
-        })
-
-        const match = hits.find((item) => item.session_id === target.id)
-        expect(match).toBeDefined()
-        expect(match?.title).toContain("Hydra planning receipt-only")
-        expect(match?.hits).toBe(0)
-        expect(match?.snippets).toEqual([])
-        expect(match?.summary).toBe("Matched title across 1 keywords. Ordered by recency.")
       },
     })
   })
@@ -468,6 +343,82 @@ describe("memory + user profile backend", () => {
     })
   })
 
+  test("memory_reflect builds object generation input with messages for provider compatibility", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        model: "opencode/gpt-5-nano",
+        memory: {
+          enabled: true,
+        },
+      } as Partial<Config.Info>,
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "reflect compatibility" })
+        const written = await Memory.write({
+          session_id: session.id,
+          store: "memory",
+          action: "add",
+          value: "User explicitly prefers Chinese replies.",
+          reason: "manual",
+        })
+        expect(written.ok).toBe(true)
+
+        let captured: Record<string, unknown> | undefined
+        Memory.setReflectionObjectGeneratorForTest(async (params) => {
+          captured = params as Record<string, unknown>
+          return {
+            object: {
+              daily_memory: [],
+              user_patches: [],
+              summary: "ok",
+            },
+          }
+        })
+
+        try {
+          const result = await Memory.reflect({
+            session_id: session.id,
+            scope: "current_session",
+            dry_run: true,
+          })
+          if (result.status !== "success") {
+            throw new Error(`memory_reflect failed in test: ${result.summary}`)
+          }
+          expect(result.status).toBe("success")
+        } finally {
+          Memory.resetReflectionObjectGeneratorForTest()
+        }
+
+        expect(captured).toBeDefined()
+        expect(Array.isArray(captured?.messages)).toBe(true)
+        expect(captured?.system).toBeUndefined()
+        expect(captured?.prompt).toBeUndefined()
+      },
+    })
+  })
+
+  test("memory_reflect uses OpenAI instructions provider option for responses API compatibility", () => {
+    const params = Memory.buildReflectionObjectParamsForTest({
+      providerID: "openai",
+      system: "system instructions",
+      prompt: "user prompt",
+    }) as Record<string, any>
+
+    expect(params.providerOptions?.openai?.instructions).toBe("system instructions")
+    expect(params.providerOptions?.openai?.store).toBe(false)
+    expect(params.maxOutputTokens).toBeUndefined()
+    expect(Array.isArray(params.messages)).toBe(true)
+    expect(params.messages).toHaveLength(1)
+    expect(params.messages[0]).toMatchObject({
+      role: "user",
+      content: "user prompt",
+    })
+  })
+
   test("keeps inferred USER entries in the prepared pool", async () => {
     await using tmp = await tmpdir({
       git: true,
@@ -517,6 +468,8 @@ describe("memory + user profile backend", () => {
         const sessionID = "search_pins_active"
         await Memory.start({ session_id: sessionID })
         let prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("Use memory_search")
+        expect(prompt.prompt).toContain("Do not use read, glob, grep, bash")
         expect(prompt.prompt).not.toContain("Phoenix scheduler")
 
         const hits = await Memory.search({ session_id: sessionID, query: "Phoenix" })
@@ -524,6 +477,61 @@ describe("memory + user profile backend", () => {
 
         prompt = await Memory.activePrompt({ session_id: sessionID })
         expect(prompt.prompt).toContain("Phoenix scheduler design uses JSON cron files")
+      },
+    })
+  })
+
+  test("USER profile baseline is injected without keyword search", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const userFile = (await Memory.read("user")).file
+        await Filesystem.write(
+          userFile,
+          ["# USER", "- preference[explicit]: 默认用中文回答；先给结论，再展开必要细节。"].join("\n"),
+        )
+
+        const memoryFile = `${(await Memory.read("memory")).file}/${todayKey()}/MEMORY.md`
+        await Filesystem.write(
+          memoryFile,
+          ["# MEMORY", "- fact[explicit]: Daily-only marker should wait for search"].join("\n"),
+        )
+
+        const sessionID = "user_profile_baseline"
+        await Memory.start({ session_id: sessionID })
+        const prompt = await Memory.activePrompt({ session_id: sessionID })
+        expect(prompt.prompt).toContain("<user_profile>")
+        expect(prompt.prompt).toContain("默认用中文回答")
+        expect(prompt.prompt).not.toContain("Daily-only marker")
+      },
+    })
+  })
+
+  test("memory_search uses prepared memory without external file permission", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const memoryFile = `${(await Memory.read("memory")).file}/${todayKey()}/MEMORY.md`
+        await Filesystem.write(
+          memoryFile,
+          ["# MEMORY", "- fact[explicit]: Permission-safe memory search marker"].join("\n"),
+        )
+
+        const tool = await MemorySearchTool.init()
+        const result = await tool.execute(
+          { query: "Permission-safe" },
+          {
+            ...toolContext(),
+            sessionID: "memory_search_permission_safe",
+            ask: async () => {
+              throw new Error("memory_search should not request file permissions")
+            },
+          },
+        )
+
+        expect(result.output).toContain("Permission-safe memory search marker")
       },
     })
   })
@@ -554,6 +562,30 @@ describe("memory + user profile backend", () => {
         await Memory.search({ session_id: sessionID, query: "beta" })
         prompt = await Memory.activePrompt({ session_id: sessionID })
         expect(prompt.prompt).toContain("New beta memory")
+      },
+    })
+  })
+
+  test("memory_start reuses prepared pool until explicit reload", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const memoryStore = await Memory.read("memory")
+        const memoryFile = `${memoryStore.file}/${todayKey()}/MEMORY.md`
+        await Filesystem.write(memoryFile, ["# MEMORY", "- fact[explicit]: Cached alpha memory"].join("\n"))
+
+        const sessionID = "start_reuses_pool"
+        const first = await Memory.start({ session_id: sessionID })
+        expect(first.entries.some((entry) => entry.text.includes("Cached alpha memory"))).toBe(true)
+
+        await Filesystem.write(memoryFile, ["# MEMORY", "- fact[explicit]: Later beta memory"].join("\n"))
+        const second = await Memory.start({ session_id: sessionID })
+        expect(second.entries.some((entry) => entry.text.includes("Cached alpha memory"))).toBe(true)
+        expect(second.entries.some((entry) => entry.text.includes("Later beta memory"))).toBe(false)
+
+        const reloaded = await Memory.reload({ session_id: sessionID })
+        expect(reloaded.snapshot.entries.some((entry) => entry.text.includes("Later beta memory"))).toBe(true)
       },
     })
   })
@@ -607,64 +639,4 @@ describe("memory + user profile backend", () => {
     expect(text.includes("... and 1 more memory failures")).toBe(true)
   })
 
-  test("session_read requires explicit request then allows continuation", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const actorSessionID = "actor"
-        const explicit = [
-          {
-            info: { id: "usr_1", role: "user" },
-            parts: [{ type: "text", text: "Please show the full session history." }],
-          },
-        ]
-        const nextPage = [
-          {
-            info: { id: "usr_2", role: "user" },
-            parts: [{ type: "text", text: "continue, next page please" }],
-          },
-        ]
-        const unrelated = [
-          {
-            info: { id: "usr_3", role: "user" },
-            parts: [{ type: "text", text: "what next?" }],
-          },
-        ]
-
-        expect(
-          Memory.canSessionRead({
-            actor_session_id: actorSessionID,
-            target_session_id: "target_a",
-            page: 1,
-            messages: explicit,
-          }),
-        ).toBe(true)
-        expect(
-          Memory.canSessionRead({
-            actor_session_id: actorSessionID,
-            target_session_id: "target_a",
-            page: 2,
-            messages: nextPage,
-          }),
-        ).toBe(true)
-        expect(
-          Memory.canSessionRead({
-            actor_session_id: actorSessionID,
-            target_session_id: "target_b",
-            page: 2,
-            messages: nextPage,
-          }),
-        ).toBe(false)
-        expect(
-          Memory.canSessionRead({
-            actor_session_id: actorSessionID,
-            target_session_id: "target_a",
-            page: 1,
-            messages: unrelated,
-          }),
-        ).toBe(false)
-      },
-    })
-  })
 })

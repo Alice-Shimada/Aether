@@ -69,6 +69,12 @@ type AgentDispatcher = {
   }): Promise<DispatchResult>
 }
 
+type SessionDispatchTarget = {
+  project: Project.Info
+  existing: Awaited<ReturnType<typeof Session.get>> | undefined
+  runtimeDirectory: string
+}
+
 const directHandlers = new Map<string, DirectHandler>()
 const BUILTIN_MEMORY_REFLECTION_JOB_ID = "builtin-memory-reflection-daily"
 
@@ -111,20 +117,17 @@ const defaultAgentDispatcher: AgentDispatcher = {
     })
   },
   async session(input) {
-    const projectID = ProjectID.make(String(input.definition.project_id))
-    const project = Project.get(projectID)
-    if (!project) throw new Error(`Project not found: ${input.definition.project_id}`)
+    const target = await resolveSessionDispatchTarget(input.definition)
 
     return Instance.provide({
-      directory: project.worktree,
+      directory: target.runtimeDirectory,
       init: InstanceBootstrap,
       fn: async () => {
         const wanted = SessionID.make(String(input.definition.session_id))
         let targetID = wanted
         let createdSessionID: string | null = null
 
-        const existing = await Session.get(wanted).catch(() => undefined)
-        if (!existing || existing.projectID !== project.id) {
+        if (!target.existing || target.existing.projectID !== target.project.id) {
           const created = await Session.create({
             title: input.definition.name,
           })
@@ -152,7 +155,7 @@ const defaultAgentDispatcher: AgentDispatcher = {
 
         return {
           output_summary: `Queued cron message in session ${targetID}`,
-          project_id: project.id,
+          project_id: target.project.id,
           session_id: targetID,
           created_session_id: createdSessionID,
         }
@@ -160,20 +163,17 @@ const defaultAgentDispatcher: AgentDispatcher = {
     })
   },
   async message(input) {
-    const projectID = ProjectID.make(String(input.definition.project_id))
-    const project = Project.get(projectID)
-    if (!project) throw new Error(`Project not found: ${input.definition.project_id}`)
+    const target = await resolveSessionDispatchTarget(input.definition)
 
     return Instance.provide({
-      directory: project.worktree,
+      directory: target.runtimeDirectory,
       init: InstanceBootstrap,
       fn: async () => {
         const wanted = SessionID.make(String(input.definition.session_id))
         let targetID = wanted
         let createdSessionID: string | null = null
 
-        const existing = await Session.get(wanted).catch(() => undefined)
-        if (!existing || existing.projectID !== project.id) {
+        if (!target.existing || target.existing.projectID !== target.project.id) {
           const created = await Session.create({
             title: input.definition.name,
           })
@@ -190,7 +190,7 @@ const defaultAgentDispatcher: AgentDispatcher = {
 
         return {
           output_summary: `Created cron agent message in session ${targetID}`,
-          project_id: project.id,
+          project_id: target.project.id,
           session_id: targetID,
           created_session_id: createdSessionID,
         }
@@ -234,6 +234,28 @@ function cronMetadata(jobID: string, runID: string) {
     source: "cron",
     job_id: jobID,
     run_id: runID,
+  }
+}
+
+async function resolveSessionDispatchTarget(definition: Definition): Promise<SessionDispatchTarget> {
+  const projectID = ProjectID.make(String(definition.project_id))
+  const project = Project.get(projectID)
+  if (!project) throw new Error(`Project not found: ${definition.project_id}`)
+
+  const wanted = SessionID.make(String(definition.session_id))
+  const existing = await Session.get(wanted).catch(() => undefined)
+  if (existing && existing.projectID === project.id) {
+    return {
+      project,
+      existing,
+      runtimeDirectory: existing.directory,
+    }
+  }
+
+  return {
+    project,
+    existing,
+    runtimeDirectory: project.worktree,
   }
 }
 

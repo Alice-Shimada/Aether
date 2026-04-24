@@ -15,6 +15,7 @@ import { Global } from "../../src/global"
 import { Config } from "../../src/config/config"
 import { tmpdir } from "../fixture/fixture"
 import { Project } from "../../src/project/project"
+import { ProjectID } from "../../src/project/schema"
 import { Instance } from "../../src/project/instance"
 import { Server } from "../../src/server/server"
 import { Session } from "../../src/session"
@@ -84,6 +85,21 @@ async function appendUserMessage(sessionID: SessionID, text: string) {
     text,
   })
   return message
+}
+
+async function captureEventDirectories(run: () => Promise<void>) {
+  const directories: string[] = []
+  const listener = (event: { directory?: string }) => {
+    if (event.directory) directories.push(event.directory)
+  }
+  const { GlobalBus } = await import("../../src/bus/global")
+  GlobalBus.on("event", listener)
+  try {
+    await run()
+  } finally {
+    GlobalBus.off("event", listener)
+  }
+  return directories
 }
 
 beforeEach(async () => {
@@ -461,6 +477,39 @@ describe("Cron core", () => {
         expect(assistant?.info.role).toBe("assistant")
         if (assistant?.info.role !== "assistant") throw new Error("Expected an assistant cron message")
         expect(assistant.info.parentID).toBe(latest.id)
+      },
+    })
+  })
+
+  test("agent_message mode emits session events on the existing session directory for global projects", async () => {
+    await using tmp = await tmpdir()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({ title: "cron global notify" })
+        expect(session.projectID).toBe(ProjectID.global)
+        expect(session.directory).toBe(tmp.path)
+
+        const created = await Cron.createJob({
+          name: "assistant notification global",
+          mode: "agent_message",
+          project_id: "global",
+          session_id: session.id,
+          schedule_type: "cron",
+          schedule_value: "0 3 * * *",
+          payload: {
+            message: "global reminder",
+            agent: "build",
+          },
+        })
+
+        const directories = await captureEventDirectories(async () => {
+          await Cron.runJobNow({ id: created.definition.id })
+        })
+
+        expect(directories).toContain(tmp.path)
+        expect(directories).not.toContain("/")
       },
     })
   })

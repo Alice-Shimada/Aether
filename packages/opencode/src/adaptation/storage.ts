@@ -8,14 +8,16 @@ const base = () => MemoryPath.adaptationRoot()
 const global = () => safeJoin(base(), "global")
 const subjects = () => safeJoin(base(), "subjects")
 const initiatives = () => safeJoin(base(), "initiatives")
-const projects = () => safeJoin(base(), "projects")
 const taskScopes = () => safeJoin(base(), "task-scopes")
 const artifacts = () => safeJoin(base(), "artifacts")
+const workspace = () => safeJoin(base(), "workspace")
+const projects = () => safeJoin(workspace(), "projects")
 const signals = () => safeJoin(base(), "signals")
 const summaries = () => safeJoin(base(), "summaries")
 const proposals = () => safeJoin(base(), "proposals")
 const indexes = () => safeJoin(base(), "indexes")
 const bindings = () => safeJoin(base(), "bindings")
+const sessions = () => safeJoin(bindings(), "sessions")
 const cache = () => safeJoin(MemoryPath.cacheRoot(), "adaptation")
 
 const state = {
@@ -56,12 +58,12 @@ const setup = async () => {
   const dirs = [
     base(),
     global(),
-    safeJoin(global(), "user"),
     subjects(),
     initiatives(),
-    projects(),
     taskScopes(),
     artifacts(),
+    workspace(),
+    projects(),
     signals(),
     summaries(),
     proposals(),
@@ -71,7 +73,7 @@ const setup = async () => {
     safeJoin(proposals(), "deferred"),
     indexes(),
     bindings(),
-    safeJoin(bindings(), "sessions"),
+    sessions(),
     safeJoin(bindings(), "projects"),
     safeJoin(bindings(), "task-scopes"),
     cache(),
@@ -82,10 +84,10 @@ const setup = async () => {
 
   await MemoryManifest.ensure()
 
-  const globalProfile = safeJoin(global(), "user", "global-profile.json")
-  const globalPolicy = safeJoin(global(), "user", "global-policy.json")
+  const globalGuidance = safeJoin(workspace(), "global-guidance.json")
+  const globalPolicy = safeJoin(global(), "global-policy.json")
   const seed = [
-    seedJSON(globalProfile, {
+    seedJSON(globalGuidance, {
       version: "v1",
       updated_at: now(),
       summary: "",
@@ -124,6 +126,11 @@ export const globalRoot = () => {
 export const subjectsRoot = () => {
   void ensure()
   return subjects()
+}
+
+export const workspaceRoot = () => {
+  void ensure()
+  return workspace()
 }
 
 export const projectsRoot = () => {
@@ -189,6 +196,11 @@ export const indexesRoot = () => {
 export const bindingsRoot = () => {
   void ensure()
   return bindings()
+}
+
+export const sessionsRoot = () => {
+  void ensure()
+  return sessions()
 }
 
 export const cacheRoot = () => {
@@ -261,6 +273,8 @@ export const projectFile = (project_id: string, ...parts: string[]) => safeJoin(
 export const initiativeFile = (initiative_id: string, ...parts: string[]) => safeJoin(initiativeRoot(initiative_id), ...parts)
 export const taskScopeFile = (scope_id: string, ...parts: string[]) => safeJoin(taskScopeRoot(scope_id), ...parts)
 export const artifactFile = (artifact_id: string, ...parts: string[]) => safeJoin(artifactRoot(artifact_id), ...parts)
+export const sessionRoot = (session_id: string) => safeJoin(sessions(), seg(session_id))
+export const sessionFile = (session_id: string, ...parts: string[]) => safeJoin(sessionRoot(session_id), ...parts)
 
 export const bindingFile = (kind: "sessions" | "projects" | "task-scopes", id: string) =>
   safeJoin(bindingsRoot(), kind, `${seg(id)}.json`)

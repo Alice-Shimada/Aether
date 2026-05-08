@@ -7,10 +7,10 @@ import { ensureMap } from "./project"
 import { getBinding, patchBinding, syncBinding } from "./session"
 import {
   getGlobalPolicy,
-  getGlobalProfile,
+  getGlobalGuidance,
   getInitiativePolicy,
   getInitiativeProfile,
-  getProjectProfile,
+  getProjectGuidance,
   getSubjectPolicy,
   getSubjectProfile,
 } from "./profile"
@@ -33,13 +33,15 @@ import { AdaptationModel, type AdaptationModelMap } from "./model"
 import { baselineFixtures } from "./fixtures"
 import { AdaptationStatusView, ContextPacket, ProposalStatus, ScopeLevel, ScopeRef } from "./types"
 import type { ProposalRecord } from "./types"
-import { listProjectHabits, removeHabitSource, suppressHabitInProject } from "./habit"
+import { listProjectHabits, removeHabitSource } from "./habit"
 import {
   activateScratch as enableScratch,
   dismissScratch as dropScratch,
   listProjectScratch,
   listScratch,
   listScratchConflicts,
+  listScratchHits,
+  resolveScratchReview as settleScratchReview,
   resolveSimilarScratch,
   reviewScratch,
   scratchOptions,
@@ -156,9 +158,9 @@ export namespace Adaptation {
     return getPacket(id)
   }
 
-  export async function globalProfile() {
+  export async function globalGuidance() {
     await ready()
-    return getGlobalProfile()
+    return getGlobalGuidance()
   }
 
   export async function globalPolicy() {
@@ -181,9 +183,9 @@ export namespace Adaptation {
     return getSubjectPolicy(id)
   }
 
-  export async function projectProfile(id: string) {
+  export async function projectGuidance(id: string) {
     await ready()
-    return getProjectProfile(id)
+    return getProjectGuidance(id)
   }
 
   export async function initiativeProfile(id: string) {
@@ -203,7 +205,7 @@ export namespace Adaptation {
 
   export async function extract(input: {
     session_id: string
-    mode: "manual_current_session" | "after_response" | "after_summary"
+    mode: "manual_current_session" | "after_user_message" | "after_summary"
     message_ids?: string[]
   }) {
     await ready()
@@ -222,7 +224,7 @@ export namespace Adaptation {
       Array.from(by_scope.entries()).map(async ([key, ids]) => {
         const [level, target] = key.split(":")
         const parsed = ScopeLevel.safeParse(level)
-        if (!parsed.success || parsed.data === "session") return undefined
+        if (!parsed.success) return undefined
         return runScopeSummary({
           scope: {
             level: parsed.data,
@@ -332,7 +334,8 @@ export namespace Adaptation {
     await ready()
     return {
       items: await listScratch(session_id),
-      conflicts: await listScratchConflicts(session_id),
+      reviews: await listScratchConflicts(session_id),
+      hits: await listScratchHits(session_id),
       options: await scratchOptions(session_id),
     }
   }
@@ -373,6 +376,26 @@ export namespace Adaptation {
     return item
   }
 
+  export async function resolveScratchReview(input: {
+    session_id: string
+    id: string
+    action: "keep_existing" | "adopt_candidate" | "adopt_custom"
+    text?: string
+  }) {
+    await ready()
+    const item = await settleScratchReview(input)
+    await compileContext({
+      session_id: input.session_id,
+      request_id: `scratch:review:${input.id}:${input.action}`,
+      request: input.text ?? item?.candidate.summary ?? "scratch review resolved",
+      budget: {
+        max_sections: 8,
+        max_chars: 4000,
+      },
+    }).catch(() => undefined)
+    return item
+  }
+
   export async function promoteScratch(input: { session_id: string; id: string; scope: ScopeRef; cleanup_duplicates?: boolean }) {
     await ready()
     const bind = await getBinding(input.session_id)
@@ -395,7 +418,7 @@ export namespace Adaptation {
         summary: item.summary,
         impact: item.impact,
         confidence: 0.9,
-        evidence_refs: item.evidence.map((row) => row.message_id),
+        evidence_refs: item.evidence.flatMap((row) => (row.message_id ? [row.message_id] : [])),
         promotion: {
           source_scope: {
             level: "session",
@@ -479,18 +502,6 @@ export namespace Adaptation {
   }) {
     await ready()
     return removeHabitSource(input)
-  }
-
-  export async function suppressHabit(input: {
-    session_id: string
-    habit_id: string
-    scope_level: "initiative" | "task_scope"
-    scope_id: string
-    kind: "initiative_policy" | "task_scope" | "task_scope_policy"
-    note?: string
-  }) {
-    await ready()
-    return suppressHabitInProject(input)
   }
 
   export async function reindex() {

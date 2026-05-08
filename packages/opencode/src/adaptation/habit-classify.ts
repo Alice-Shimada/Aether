@@ -44,13 +44,14 @@ const buildPrompt = (habits: HabitInput[]) =>
     "",
     "字段说明：",
     "- triggers: 3~8 个关键词/短语，用于后续检索该规则。包含核心概念、同义词、中英双语关键词。",
-    '- impact: "high"=强制性规则（必须/默认/always） / "medium"=偏好性规则 / "low"=弱建议',
+    '- impact: "high"=强制性或默认性规则 / "medium"=偏好性规则 / "low"=弱建议',
     "",
     "习惯规则：",
     ...habits.map((item, i) => `${i + 1}. [${item.id}] ${quote(item.text)}`),
     "",
     "输出 JSON 数组：",
     '[{ "id": "habit_xxx", "triggers": ["keyword1", "keyword2"], "impact": "high" }]',
+    "不要使用固定关键词列表作为判断依据；请根据整条规则的语义判断。",
     "只输出 JSON。",
   ].join("\n")
 
@@ -72,56 +73,20 @@ const parseResult = (text: string, validIds: Set<string>): HabitClassification[]
     }))
 }
 
-/** Regex fallback for trigger extraction. */
-const regexTriggers = (text: string) =>
-  Array.from(
-    new Set(
-      text
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}_-]+/u)
-        .map((item) => item.trim())
-        .filter((item) => item.length > 2)
-        .slice(0, 8),
-    ),
-  )
-
-/** Regex fallback for impact classification. */
-const regexImpact = (text: string): "high" | "medium" | "low" =>
-  /必须|默认|always|default|规则/u.test(text) ? "high" : "medium"
-
 /**
  * Classify habit rules in batches using LLM.
  * Extracts semantic triggers and impact level for each habit.
- * Falls back to regex tokenization when LLM is unavailable.
+ * If the LLM is unavailable, leaves the habit unclassified instead of using hard-coded keyword rules.
  */
 export const classifyHabits = async (habits: HabitInput[]): Promise<Map<string, HabitClassification>> => {
   const results = new Map<string, HabitClassification>()
   if (habits.length === 0) return results
 
   const model = await AdaptationModel.pick("signal_extract")
-  if (!model) {
-    // Fallback: regex for all
-    habits.forEach((item) => {
-      results.set(item.id, {
-        id: item.id,
-        triggers: regexTriggers(item.text),
-        impact: regexImpact(item.text),
-      })
-    })
-    return results
-  }
+  if (!model) return results
 
   const lang = await Provider.getLanguage(model).catch(() => undefined)
-  if (!lang) {
-    habits.forEach((item) => {
-      results.set(item.id, {
-        id: item.id,
-        triggers: regexTriggers(item.text),
-        impact: regexImpact(item.text),
-      })
-    })
-    return results
-  }
+  if (!lang) return results
 
   const chunks: HabitInput[][] = []
   for (let i = 0; i < habits.length; i += CHUNK_SIZE) {
@@ -143,17 +108,6 @@ export const classifyHabits = async (habits: HabitInput[]): Promise<Map<string, 
       const parsed = parseResult(done.text, validIds)
       parsed.forEach((item) => results.set(item.id, item))
     }
-
-    // Fallback for any habits not covered by LLM
-    chunk.forEach((item) => {
-      if (!results.has(item.id)) {
-        results.set(item.id, {
-          id: item.id,
-          triggers: regexTriggers(item.text),
-          impact: regexImpact(item.text),
-        })
-      }
-    })
   }
 
   return results

@@ -1,15 +1,15 @@
 import fs from "fs/promises"
-import { initiativeFile, projectFile, readJSON, safeJoin, writeJSON, globalRoot, subjectsRoot, nowISO, ensureDir, initiativeRoot } from "./storage"
+import { initiativeFile, projectFile, readJSON, safeJoin, writeJSON, globalRoot, subjectsRoot, workspaceRoot, nowISO, ensureDir, initiativeRoot } from "./storage"
 import {
-  GlobalProfile,
+  GlobalGuidance,
   InitiativePolicy,
   InitiativeProfile,
-  ProjectProfile,
+  ProjectGuidance,
   SubjectProfile,
   PolicyRecord,
 } from "./types"
 
-const emptyProfile = () => ({
+const emptyGuidance = () => ({
   version: "v1",
   updated_at: nowISO(),
   summary: "",
@@ -31,19 +31,19 @@ export const ensureProject = async (project_id: string) => {
   const root = projectFile(project_id)
   await ensureDir(root)
 
-  const profile = projectFile(project_id, "project-profile.json")
+  const guidance = projectFile(project_id, "project-guidance.json")
   const proposal = projectFile(project_id, "proposals")
   await ensureDir(proposal)
 
-  const p = await readJSON<ProjectProfile | undefined>(profile, undefined)
+  const p = await readJSON<ProjectGuidance | undefined>(guidance, undefined)
   if (!p) {
     await writeJSON(
-      profile,
+      guidance,
       {
-        ...emptyProfile(),
+        ...emptyGuidance(),
         project_id,
       },
-      "project-profile",
+      "project-guidance",
     )
   }
 }
@@ -61,7 +61,7 @@ export const ensureInitiative = async (initiative_id: string) => {
     await writeJSON(
       profile,
       {
-        ...emptyProfile(),
+        ...emptyGuidance(),
         initiative_id,
       },
       "initiative-profile",
@@ -84,18 +84,18 @@ export const ensureInitiative = async (initiative_id: string) => {
   }
 }
 
-export const globalProfileFile = () => safeJoin(globalRoot(), "user", "global-profile.json")
-export const globalPolicyFile = () => safeJoin(globalRoot(), "user", "global-policy.json")
+export const globalGuidanceFile = () => safeJoin(workspaceRoot(), "global-guidance.json")
+export const globalPolicyFile = () => safeJoin(globalRoot(), "global-policy.json")
 
 export const subjectProfileFile = (subject_id: string) => safeJoin(subjectsRoot(), subject_id, "profile.json")
 export const subjectPolicyFile = (subject_id: string) => safeJoin(subjectsRoot(), subject_id, "policy.json")
 
-export const projectProfileFile = (project_id: string) => projectFile(project_id, "project-profile.json")
+export const projectGuidanceFile = (project_id: string) => projectFile(project_id, "project-guidance.json")
 export const initiativeProfileFile = (initiative_id: string) => initiativeFile(initiative_id, "initiative-profile.json")
 export const initiativePolicyFile = (initiative_id: string) => initiativeFile(initiative_id, "initiative-policy.json")
 
-export const getGlobalProfile = async () => {
-  const item = await readJSON(globalProfileFile(), {
+export const getGlobalGuidance = async () => {
+  const item = await readJSON(globalGuidanceFile(), {
     version: "v1",
     updated_at: nowISO(),
     summary: "",
@@ -105,7 +105,7 @@ export const getGlobalProfile = async () => {
     artifact_refs: [],
     ipk_piece_refs: [],
   })
-  return GlobalProfile.parse(item)
+  return GlobalGuidance.parse(item)
 }
 
 export const getGlobalPolicy = async () => {
@@ -144,19 +144,19 @@ export const listSubjects = async () => {
     .sort((a, b) => a.localeCompare(b))
 }
 
-export const getProjectProfile = async (project_id: string) => {
+export const getProjectGuidance = async (project_id: string) => {
   await ensureProject(project_id)
-  const item = await readJSON(projectProfileFile(project_id), {
-    ...emptyProfile(),
+  const item = await readJSON(projectGuidanceFile(project_id), {
+    ...emptyGuidance(),
     project_id,
   })
-  return ProjectProfile.parse(item)
+  return ProjectGuidance.parse(item)
 }
 
 export const getInitiativeProfile = async (initiative_id: string) => {
   await ensureInitiative(initiative_id)
   const item = await readJSON(initiativeProfileFile(initiative_id), {
-    ...emptyProfile(),
+    ...emptyGuidance(),
     initiative_id,
   })
   return InitiativeProfile.parse(item)
@@ -174,13 +174,13 @@ export const getInitiativePolicy = async (initiative_id: string) => {
   return InitiativePolicy.parse(item)
 }
 
-export const putGlobalProfile = async (value: GlobalProfile) => {
+export const putGlobalGuidance = async (value: GlobalGuidance) => {
   const next = {
     ...value,
     updated_at: nowISO(),
   }
-  await writeJSON(globalProfileFile(), next, "global-profile")
-  return GlobalProfile.parse(next)
+  await writeJSON(globalGuidanceFile(), next, "global-guidance")
+  return GlobalGuidance.parse(next)
 }
 
 export const putGlobalPolicy = async (value: PolicyRecord) => {
@@ -216,15 +216,15 @@ export const putSubjectPolicy = async (subject_id: string, value: PolicyRecord) 
   return PolicyRecord.parse(next)
 }
 
-export const putProjectProfile = async (project_id: string, value: ProjectProfile) => {
+export const putProjectGuidance = async (project_id: string, value: ProjectGuidance) => {
   await ensureProject(project_id)
   const next = {
     ...value,
     project_id,
     updated_at: nowISO(),
   }
-  await writeJSON(projectProfileFile(project_id), next, "project-profile")
-  return ProjectProfile.parse(next)
+  await writeJSON(projectGuidanceFile(project_id), next, "project-guidance")
+  return ProjectGuidance.parse(next)
 }
 
 export const putInitiativeProfile = async (initiative_id: string, value: InitiativeProfile) => {

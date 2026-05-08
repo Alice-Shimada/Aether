@@ -8664,7 +8664,7 @@ export type GetAdaptationInitiativesIdPolicyResponses = {
   200: unknown
 }
 
-export type GetAdaptationProjectsIdProfileData = {
+export type GetAdaptationProjectsIdGuidanceData = {
   body?: never
   path: {
     id: string
@@ -8673,17 +8673,17 @@ export type GetAdaptationProjectsIdProfileData = {
     directory?: string
     workspace?: string
   }
-  url: "/adaptation/projects/{id}/profile"
+  url: "/adaptation/projects/{id}/guidance"
 }
 
-export type GetAdaptationProjectsIdProfileResponses = {
+export type GetAdaptationProjectsIdGuidanceResponses = {
   200: unknown
 }
 
 export type PostAdaptationSignalsExtractData = {
   body?: {
     session_id: string
-    mode: "manual_current_session" | "after_response" | "after_summary"
+    mode: "manual_current_session" | "after_user_message" | "after_summary"
     message_ids?: Array<string>
   }
   path?: never
@@ -8811,6 +8811,26 @@ export type GetAdaptationScratchResponses = {
   200: unknown
 }
 
+export type PostAdaptationScratchReviewsIdResolveData = {
+  body?: {
+    session_id: string
+    action: "keep_existing" | "adopt_candidate" | "adopt_custom"
+    text?: string
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/adaptation/scratch/reviews/{id}/resolve"
+}
+
+export type PostAdaptationScratchReviewsIdResolveResponses = {
+  200: unknown
+}
+
 export type GetAdaptationScratchReviewData = {
   body?: never
   path?: never
@@ -8902,27 +8922,6 @@ export type PostAdaptationHabitsRemoveSourceData = {
 }
 
 export type PostAdaptationHabitsRemoveSourceResponses = {
-  200: unknown
-}
-
-export type PostAdaptationHabitsSuppressProjectData = {
-  body?: {
-    session_id: string
-    habit_id: string
-    scope_level: "initiative" | "task_scope"
-    scope_id: string
-    kind: "initiative_policy" | "task_scope" | "task_scope_policy"
-    note?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    workspace?: string
-  }
-  url: "/adaptation/habits/suppress-project"
-}
-
-export type PostAdaptationHabitsSuppressProjectResponses = {
   200: unknown
 }
 

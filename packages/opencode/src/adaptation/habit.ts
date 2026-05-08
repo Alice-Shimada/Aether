@@ -3,12 +3,10 @@ import { markIndexDirty, rebuildIndexes } from "./indexes"
 import { ensureMap } from "./project"
 import { getInitiativePolicy, putInitiativePolicy } from "./profile"
 import { getBinding } from "./session"
-import { indexesRoot, nowISO, projectFile, readJSON, safeJoin, writeJSON } from "./storage"
-import { HabitSurface, HabitView, ProjectSuppression } from "./types"
+import { indexesRoot, nowISO, safeJoin, writeJSON } from "./storage"
+import { HabitSurface, HabitView } from "./types"
 
 const file = () => safeJoin(indexesRoot(), "habit-index.jsonl")
-const suppressionFile = (project_id: string) => projectFile(project_id, "project-suppression.json")
-const sid = () => `sup_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`
 
 const norm = (text: string) =>
   text
@@ -17,60 +15,6 @@ const norm = (text: string) =>
     .replace(/[^\p{L}\p{N}]+/giu, " ")
     .trim()
     .replace(/\s+/g, " ")
-
-const score = (a: string, b: string) => {
-  if (!a || !b) return 0
-  if (a === b) return 1
-  if (a.includes(b) || b.includes(a)) {
-    const short = Math.min(a.length, b.length)
-    const long = Math.max(a.length, b.length)
-    return 0.85 + (short / Math.max(1, long)) * 0.15
-  }
-  const x = new Set(a.split(" ").filter(Boolean))
-  const y = new Set(b.split(" ").filter(Boolean))
-  if (x.size === 0 || y.size === 0) return 0
-  let hit = 0
-  x.forEach((item) => {
-    if (y.has(item)) hit += 1
-  })
-  return hit / Math.max(1, x.size + y.size - hit)
-}
-
-const hit = (rules: { text_norm: string; threshold: number; id: string }[], text: string) => {
-  const key = norm(text)
-  for (const rule of rules) {
-    if (score(rule.text_norm, key) >= rule.threshold) {
-      return {
-        hit: true,
-        reason: `project_suppressed:${rule.id}`,
-      }
-    }
-  }
-  return {
-    hit: false,
-  }
-}
-
-export const getProjectSuppression = async (project_id: string) => {
-  const row = await readJSON<ProjectSuppression>(suppressionFile(project_id), {
-    version: "v1",
-    project_id,
-    updated_at: nowISO(),
-    rules: [],
-  })
-  return ProjectSuppression.parse(row)
-}
-
-const putProjectSuppression = async (project_id: string, value: ProjectSuppression) => {
-  const next = ProjectSuppression.parse({
-    ...value,
-    version: "v1",
-    project_id,
-    updated_at: nowISO(),
-  })
-  await writeJSON(suppressionFile(project_id), next, "project-suppression")
-  return next
-}
 
 const list = async () => {
   const raw = await Bun.file(file())
@@ -123,7 +67,6 @@ export const listProjectHabits = async (
   input: { initiative_id?: string; task_scope_id?: string; subject_ids?: string[]; current?: boolean; habit_ids?: string[] } = {},
 ) => {
   const all = await list()
-  const suppression = await getProjectSuppression(project_id)
   const initiative_id = input.initiative_id
   const ctx = { project_id, initiative_id, task_scope_id: input.task_scope_id, subject_ids: input.subject_ids }
   const ids = new Set(input.habit_ids ?? [])
@@ -138,39 +81,23 @@ export const listProjectHabits = async (
 
   const filtered = input.current ? scoped.filter((item) => matchId(item, ids)) : scoped
 
-  const rows = filtered.map((item) => {
-    const gate = hit(suppression.rules, item.summary)
-    return {
-      view: HabitView.parse({
-        ...item,
-        suppressed: gate.hit,
-        suppress_reason: gate.reason,
-      }),
-      affinity: affinity(item, ctx),
-    }
-  })
+  const rows = filtered.map((item) => ({
+    view: HabitView.parse(item),
+    affinity: affinity(item, ctx),
+  }))
 
   const uniq = new Map<string, { view: ReturnType<typeof HabitView.parse>; affinity: number }>()
   rows.forEach((item) => {
     const key = norm(item.view.summary)
     const old = uniq.get(key)
-    if (
-      !old ||
-      Number(old.view.suppressed) > Number(item.view.suppressed) ||
-      item.affinity > old.affinity ||
-      (item.affinity === old.affinity && item.view.impact.localeCompare(old.view.impact) > 0)
-    ) {
+    if (!old || item.affinity > old.affinity || (item.affinity === old.affinity && item.view.impact.localeCompare(old.view.impact) > 0)) {
       uniq.set(key, item)
     }
   })
 
   return Array.from(uniq.values())
     .sort(
-      (a, b) =>
-        Number(a.view.suppressed) - Number(b.view.suppressed) ||
-        b.affinity - a.affinity ||
-        b.view.impact.localeCompare(a.view.impact) ||
-        a.view.summary.localeCompare(b.view.summary),
+      (a, b) => b.affinity - a.affinity || b.view.impact.localeCompare(a.view.impact) || a.view.summary.localeCompare(b.view.summary),
     )
     .map((item) => item.view)
 }
@@ -289,63 +216,4 @@ export const removeHabitSource = async (input: {
     project_id,
     removed: true,
   }
-}
-
-export const suppressHabitInProject = async (input: {
-  session_id: string
-  habit_id: string
-  scope_level: "initiative" | "task_scope"
-  scope_id: string
-  kind: "initiative_policy" | "task_scope" | "task_scope_policy"
-  note?: string
-}) => {
-  const map = await ensureMap({ session_id: input.session_id })
-  const bind = await getBinding(input.session_id)
-  const project_id = map.project_id
-  const rows = await listProjectHabits(project_id, {
-    initiative_id: bind.initiative_id,
-    ...(input.scope_level === "task_scope" ? { task_scope_id: input.scope_id } : {}),
-  })
-  const row = pick(rows, input)
-  if (!row) throw new Error("habit not found in current project")
-
-  const old = await getProjectSuppression(project_id)
-  const key = norm(row.summary)
-  const same = old.rules.find((item) => score(item.text_norm, key) >= Math.max(item.threshold, 0.95))
-  if (same) {
-    return {
-      mode: "suppress_project",
-      project_id,
-      created: false,
-      rule: same,
-    }
-  }
-
-  const next = await putProjectSuppression(project_id, {
-    ...old,
-    rules: [
-      ...old.rules,
-      {
-        id: sid(),
-        created_at: nowISO(),
-        habit_id: row.id,
-        scope: row.scope,
-        kind: row.kind,
-        text: row.summary,
-        text_norm: key,
-        threshold: 0.82,
-        note: input.note,
-      },
-    ],
-  })
-  return {
-    mode: "suppress_project",
-    project_id,
-    created: true,
-    rule: next.rules[next.rules.length - 1],
-  }
-}
-
-export const suppressionHit = (input: { rules: ProjectSuppression["rules"]; text: string }) => {
-  return hit(input.rules, input.text)
 }

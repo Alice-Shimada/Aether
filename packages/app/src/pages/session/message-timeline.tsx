@@ -287,7 +287,7 @@ export function MessageTimeline(props: {
         const old = prev?.[0] === id ? (prev?.[1] ?? false) : false
         if (!id || busy || !old) return
 
-        // Background after_response extraction is async, so pull twice shortly
+        // Background user-message extraction is async, so pull twice shortly
         // after the turn settles to surface new scratch habits without manual refresh.
         const jobs = [450, 1800].map((ms) =>
           window.setTimeout(() => {

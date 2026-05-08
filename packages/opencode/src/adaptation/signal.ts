@@ -2,13 +2,13 @@ import { Identifier } from "@/id/id"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionID } from "@/session/schema"
-import { SignalRecord, ScopeRef } from "./types"
+import { SignalRecord, ScopeRef, type ExtractedHabitCandidate } from "./types"
 import { appendText, indexesRoot, nowISO, readJSON, safeJoin, signalsRoot, writeJSON } from "./storage"
 import { getBinding, patchBinding, syncBinding } from "./session"
 import { getSubjectProfile } from "./profile"
 import { semanticMerge } from "./semantic"
-import { classifyBatch, type ClassifiedSignal } from "./llm"
-import { captureScratch } from "./scratch"
+import { extractCandidateBatch } from "./llm"
+import { applyCandidate, beginScratchSession, commitScratchSession, ScratchComparatorError } from "./scratch"
 import { ensureMap } from "./project"
 
 type SignalIndex = {
@@ -21,7 +21,7 @@ type SignalIndex = {
 
 type ExtractInput = {
   session_id: string
-  mode: "manual_current_session" | "after_response" | "after_summary"
+  mode: "manual_current_session" | "after_user_message" | "after_summary"
   message_ids?: string[]
 }
 
@@ -51,11 +51,11 @@ export type ProposalCandidate = {
   }
   target_patch?: {
     object:
-      | "global_profile"
+      | "global_guidance"
       | "global_policy"
       | "subject_profile"
       | "subject_policy"
-      | "project_profile"
+      | "project_guidance"
       | "initiative_profile"
       | "initiative_policy"
       | "task_scope"
@@ -70,13 +70,15 @@ export type ProposalCandidate = {
 
 export type ExtractOutput = {
   signals: SignalRecord[]
+  candidates: ExtractedHabitCandidate[]
   proposal_candidates: ProposalCandidate[]
   scratch: {
     created: string[]
     pending: string[]
     merged: string[]
     superseded: string[]
-    shadowed: string[]
+    reviews: string[]
+    hits: string[]
   }
   skipped: string[]
 }
@@ -142,48 +144,6 @@ const file = (stamp: string) => {
   return safeJoin(signalsRoot(), year, month, "signals.jsonl")
 }
 
-const explicit = (text: string) => /以后|默认|每次|都这样|记住|always|default|from now on/u.test(text.toLowerCase())
-const temporary = (text: string) => /这次|临时|仅此一次|only this time|just this time/u.test(text.toLowerCase())
-
-const impact = (text: string) => {
-  const raw = text.toLowerCase()
-  if (/以后|默认|都这样|记住|必须|规则|always|default|policy|workflow/u.test(raw)) return "high" as const
-  if (/尽量|优先|建议|prefer|should/u.test(raw)) return "medium" as const
-  return "low" as const
-}
-
-const kind = (text: string) => {
-  const raw = text.toLowerCase()
-  if (/写入|文件|路径|path|write/u.test(raw)) return "artifact_rule"
-  if (/工具|tool|命令|command/u.test(raw)) return "tool_preference"
-  if (/规划|设计|计划|plan|design/u.test(raw)) return "workflow_preference"
-  return "response_preference"
-}
-
-const traits = (text: string) => {
-  const raw = text.toLowerCase()
-  const out: string[] = []
-  if (/物理直觉|physics intuition|intuitive/u.test(raw)) out.push("pref_response:physics_intuition")
-  if (/计算|推导|calculation|derive/u.test(raw)) out.push("pref_response:calculation_detail")
-  if (/规划|设计|计划|open-questions|decisions|implementation-decisions/u.test(raw)) out.push("workflow:planning_doc_sync")
-  if (/(统计物理|statistical mechanics|stat mech)/u.test(raw) && /(不熟|不熟悉|不会|not familiar|beginner|new to)/u.test(raw)) {
-    out.push("cap_subject:statistical-mechanics:familiarity_low")
-  }
-  if (/(统计物理|statistical mechanics|stat mech)/u.test(raw) && /(熟悉|掌握|会了|now familiar|comfortable with)/u.test(raw)) {
-    out.push("cap_subject:statistical-mechanics:familiarity_high")
-  }
-  if (/(量子场论|quantum field theory|qft)/u.test(raw) && /(熟悉|擅长|comfortable|familiar)/u.test(raw)) {
-    out.push("cap_subject:quantum-field-theory:familiarity_high")
-  }
-  return uniq(out)
-}
-
-const stability = (text: string, tags: string[]) => {
-  if (temporary(text)) return "transient" as const
-  if (tags.some((item) => item.startsWith("cap_subject:"))) return "mutable" as const
-  return "stable" as const
-}
-
 const title = (key: string) => {
   if (key === "workflow:planning_doc_sync") return "规划讨论文档收敛规则"
   if (key === "pref_response:physics_intuition") return "偏好物理直觉解释"
@@ -222,19 +182,20 @@ const gather = async (session_id: string, message_ids: string[]) => {
   const all = await Session.messages({ sessionID: SessionID.make(session_id) })
   const keep = message_ids.length > 0 ? new Set(message_ids) : undefined
   return all
-    .filter((msg) => msg.info.role === "user" || msg.info.role === "assistant")
+    .filter((msg) => msg.info.role === "user")
     .filter((msg) => (keep ? keep.has(msg.info.id) : true))
-    .flatMap((msg) =>
-      msg.parts
+    .map((msg) => ({
+      id: msg.info.id,
+      role: msg.info.role,
+      text: msg.parts
         .filter((part): part is MessageV2.TextPart => part.type === "text")
         .filter((part) => !part.synthetic && !part.ignored)
-        .map((part) => ({
-          id: msg.info.id,
-          role: msg.info.role,
-          text: part.text.trim(),
-        }))
-        .filter((part) => part.text.length > 0),
-    )
+        .map((part) => part.text.trim())
+        .filter((part) => part.length > 0)
+        .join("\n\n")
+        .trim(),
+    }))
+    .filter((part) => part.text.length > 0)
 }
 
 type Buck = {
@@ -346,7 +307,7 @@ const localCandidate = (input: {
       },
       target_scope: input.buck.scope,
       kind: "scope_promotion",
-      reason: gate.fast ? "用户明确说了以后/默认规则。" : "同类高置信信号跨会话达到阈值。",
+      reason: gate.fast ? "LLM 判断用户显式设定了可复用规则。" : "同类高置信信号跨会话达到阈值。",
     },
     target_patch: policyPatch({
       object,
@@ -611,11 +572,6 @@ export const appendSignal = async (item: SignalRecord) => {
   const idx = await loadIndex()
   idx.ids[item.id] = target
   idx.sessions[item.session_id] = Array.from(new Set([...(idx.sessions[item.session_id] ?? []), item.id]))
-  const refs = item.evidence.map((row) => row.ref).filter(Boolean)
-  idx.processed = {
-    ...(idx.processed ?? {}),
-    [item.session_id]: Array.from(new Set([...(idx.processed?.[item.session_id] ?? []), ...refs])),
-  }
   await saveIndex(idx)
 
   await patchBinding(item.session_id, {
@@ -625,25 +581,18 @@ export const appendSignal = async (item: SignalRecord) => {
   return item
 }
 
-/** Regex fallback: classify a single message when LLM is unavailable. */
-const regexClassify = (text: string): ClassifiedSignal => ({
-  ref: "",
-  impact: impact(text),
-  kind: kind(text),
-  explicit: explicit(text),
-  temporary: temporary(text),
-  traits: traits(text),
-  note: text,
-})
-
-/** Derive stability from classification result. */
-const stabilityFrom = (cls: ClassifiedSignal) => {
-  if (cls.temporary) return "transient" as const
-  if (cls.traits.some((item) => item.startsWith("cap_subject:") || item.includes("familiarity"))) return "mutable" as const
+const stabilityFrom = (cand: ExtractedHabitCandidate) => {
+  if (cand.temporary) return "transient" as const
+  if (cand.traits.some((item) => item.startsWith("cap_subject:") || item.includes("familiarity"))) return "mutable" as const
   return "stable" as const
 }
 
-export const extractSignals = async (input: ExtractInput): Promise<ExtractOutput> => {
+export const extractSignals = async (
+  input: ExtractInput,
+  deps?: {
+    extract?: typeof extractCandidateBatch
+  },
+): Promise<ExtractOutput> => {
   const map = await ensureMap({ session_id: input.session_id })
   await syncBinding(input.session_id, {
     project_id: map.project_id,
@@ -654,24 +603,31 @@ export const extractSignals = async (input: ExtractInput): Promise<ExtractOutput
   if (refs.length === 0) {
     return {
       signals: [],
+      candidates: [],
       proposal_candidates: [],
       scratch: {
         created: [],
         pending: [],
         merged: [],
         superseded: [],
-        shadowed: [],
+        reviews: [],
+        hits: [],
       },
       skipped: ["no_new_evidence"],
     }
   }
 
-  // Try LLM classification first, fallback to regex per-message
-  const llm = await classifyBatch({ messages: refs })
-  const useRegex = !llm.llm_ok
+  const llm = await (deps?.extract ?? extractCandidateBatch)({
+    session_id: input.session_id,
+    messages: refs.map((row) => ({
+      id: row.id,
+      text: row.text,
+    })),
+  })
   const base = scope(bind)
   const stamp = nowISO()
   const out: SignalRecord[] = []
+  const candidates: ExtractedHabitCandidate[] = []
   const picks: ProposalCandidate[] = []
   const cache = new Map<string, Awaited<ReturnType<typeof getSubjectProfile>>>()
   const scratch = {
@@ -679,76 +635,107 @@ export const extractSignals = async (input: ExtractInput): Promise<ExtractOutput
     pending: [] as string[],
     merged: [] as string[],
     superseded: [] as string[],
-    shadowed: [] as string[],
+    reviews: [] as string[],
+    hits: [] as string[],
   }
+
+  if (!llm.llm_ok) {
+    return {
+      signals: [],
+      candidates: [],
+      proposal_candidates: [],
+      scratch,
+      skipped: ["llm_unavailable"],
+    }
+  }
+
+  const store = await beginScratchSession(input.session_id, bind.project_id)
 
   for (const row of refs) {
-    const cls = llm.results.get(row.id) ?? (useRegex ? regexClassify(row.text) : undefined)
-    // LLM says this message has no preference signal and LLM is working — skip it
-    if (!cls) continue
+    const rows = llm.results.get(row.id) ?? []
+    const skip = new Set<string>()
 
-    if (
-      row.role === "user" &&
-      (cls.explicit ||
-        cls.temporary ||
-        /不要|不用|别用|默认|以后|都按|记住|优先|请用|统一|这次|暂时|喜欢|不喜欢|倾向|偏好|更希望|最好/u.test(row.text))
-    ) {
-      const add = await captureScratch({
-        project_id: bind.project_id,
+    for (const cand of rows) {
+      candidates.push(cand)
+      try {
+        const add = await applyCandidate({
+          store,
+          project_id: bind.project_id,
+          session_id: input.session_id,
+          candidate: cand,
+          skip_ids: skip,
+        })
+        scratch.created.push(...add.created.map((hit) => hit.id))
+        scratch.pending.push(...add.pending.map((hit) => hit.id))
+        scratch.merged.push(...add.merged.map((hit) => hit.id))
+        scratch.superseded.push(...add.superseded.map((hit) => hit.id))
+        scratch.reviews.push(...add.reviews.map((hit) => hit.id))
+        scratch.hits.push(...add.hits.map((hit) => hit.id))
+        add.created.concat(add.pending).forEach((hit) => skip.add(hit.id))
+      } catch (error) {
+        if (error instanceof ScratchComparatorError) {
+          return {
+            signals: [],
+            candidates: [],
+            proposal_candidates: [],
+            scratch: {
+              created: [],
+              pending: [],
+              merged: [],
+              superseded: [],
+              reviews: [],
+              hits: [],
+            },
+            skipped: ["llm_unavailable"],
+          }
+        }
+        throw error
+      }
+
+      if (!base) continue
+
+      const item = SignalRecord.parse({
+        id: Identifier.ascending("signal"),
         session_id: input.session_id,
-        message_id: row.id,
-        text: row.text,
+        created_at: stamp,
+        scope: base,
+        kind: cand.kind,
+        polarity: "positive",
+        confidence: cand.confidence,
+        impact: cand.impact,
+        explicit: cand.explicit,
+        temporary: cand.temporary,
+        stability: stabilityFrom(cand),
+        traits: cand.traits,
+        evidence: cand.evidence
+          .filter((ev) => ev.source === "user_message" && ev.message_id)
+          .map((ev) => ({
+            source: "user_message" as const,
+            ref: ev.message_id!,
+            quote: quote(ev.quote),
+          })),
+        note: cand.summary,
       })
-      scratch.created.push(...add.created.map((hit) => hit.id))
-      scratch.pending.push(...add.pending.map((hit) => hit.id))
-      scratch.merged.push(...add.merged.map((hit) => hit.id))
-      scratch.superseded.push(...add.superseded.map((hit) => hit.id))
-      scratch.shadowed.push(...add.shadowed.map((hit) => hit.id))
+
+      if (item.evidence.length === 0) continue
+      out.push(item)
+      const fix = await recalibrate({
+        signal: item,
+        bind,
+        cache,
+      })
+      picks.push(...fix)
     }
-    if (!base) continue
-
-    const hold = stabilityFrom(cls)
-    const item = SignalRecord.parse({
-      id: Identifier.ascending("signal"),
-      session_id: input.session_id,
-      created_at: stamp,
-      scope: base,
-      kind: cls.kind,
-      polarity: "positive",
-      confidence: cls.impact === "high" ? 0.86 : cls.impact === "medium" ? 0.72 : 0.61,
-      impact: cls.impact,
-      explicit: cls.explicit,
-      temporary: cls.temporary,
-      stability: hold,
-      traits: cls.traits,
-      evidence: [
-        {
-          source: row.role === "assistant" ? "assistant_message" : "user_message",
-          ref: row.id,
-          quote: quote(row.text),
-        },
-      ],
-      note: cls.note || row.text,
-    })
-
-    await appendSignal(item)
-    out.push(item)
-    const fix = await recalibrate({
-      signal: item,
-      bind,
-      cache,
-    })
-    picks.push(...fix)
   }
 
-  await markProcessed(
-    input.session_id,
-    refs.map((item) => item.id),
-  )
+  await commitScratchSession(input.session_id, store)
+  await Promise.all(out.map((item) => appendSignal(item)))
+  await markProcessed(input.session_id, refs.map((item) => item.id))
 
   if (!base) {
     return {
       signals: [],
+      candidates,
       proposal_candidates: [],
       scratch,
       skipped: ["no_scope_binding"],
@@ -819,13 +806,15 @@ export const extractSignals = async (input: ExtractInput): Promise<ExtractOutput
 
   return {
     signals: out,
+    candidates,
     proposal_candidates: Array.from(keep.values()),
     scratch: {
       created: uniq(scratch.created),
       pending: uniq(scratch.pending),
       merged: uniq(scratch.merged),
       superseded: uniq(scratch.superseded),
-      shadowed: uniq(scratch.shadowed),
+      reviews: uniq(scratch.reviews),
+      hits: uniq(scratch.hits),
     },
     skipped: [],
   }

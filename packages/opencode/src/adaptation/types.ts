@@ -1,14 +1,17 @@
 import z from "zod"
 import { Identifier } from "@/id/id"
 
-export const HabitScopeLevel = z.enum(["global", "subject", "initiative", "task_scope", "artifact"])
+const habit_scope = ["global", "subject", "initiative", "task_scope", "artifact"] as const
+
+export const HabitScopeLevel = z.enum(habit_scope)
 
 export const WorkspaceLayer = z.enum(["global", "project", "session"])
 
-export const ScopeLevel = z.enum(["global", "subject", "initiative", "task_scope", "artifact", "session"])
+export const ScopeLevel = z.enum(habit_scope)
+export const RuntimeScopeLevel = z.enum([...habit_scope, "session"])
 
 export const ScopeRef = z.object({
-  level: ScopeLevel,
+  level: RuntimeScopeLevel,
   target: z.string().min(1),
 })
 
@@ -29,7 +32,7 @@ export const PolicyLine = z.object({
 })
 
 export const PolicyRecord = z.object({
-  scope: ScopeRef,
+  scope: HabitScopeRef,
   response_policy: z.array(PolicyLine).default([]),
   operation_policy: z.array(PolicyLine).default([]),
   updated_at: z.string(),
@@ -43,7 +46,7 @@ export const InitiativePolicy = z.object({
   operation_policy: z.array(PolicyLine).default([]),
 })
 
-export const GlobalProfile = z.object({
+export const GlobalGuidance = z.object({
   version: z.literal("v1").default("v1"),
   updated_at: z.string(),
   summary: z.string().default(""),
@@ -67,7 +70,7 @@ export const SubjectProfile = z.object({
   derived_from: z.array(z.string()).default([]),
 })
 
-export const ProjectProfile = z.object({
+export const ProjectGuidance = z.object({
   version: z.literal("v1").default("v1"),
   project_id: z.string(),
   updated_at: z.string(),
@@ -133,7 +136,7 @@ export const SummaryRecord = z.object({
     start: z.string(),
     end: z.string(),
   }),
-  scope: ScopeRef,
+  scope: HabitScopeRef,
   session_ids: z.array(Identifier.schema("session")).default([]),
   signal_ids: z.array(Identifier.schema("signal")).default([]),
   highlights: z.array(z.string()).default([]),
@@ -180,7 +183,7 @@ export const SessionReview = z.object({
   session_id: Identifier.schema("session"),
   mode: z.enum(["suggest_add", "suggest_keep_attention", "suggest_remove", "suggest_replace", "suggest_rescope"]),
   habit_id: z.string().min(1),
-  habit_scope: ScopeRef.optional(),
+  habit_scope: HabitScopeRef.optional(),
   replacement_id: z.string().optional(),
   reason: z.string().default(""),
 })
@@ -206,11 +209,11 @@ export const ProposalRecord = z.object({
   target_patch: z
     .object({
       object: z.enum([
-        "global_profile",
+        "global_guidance",
         "global_policy",
         "subject_profile",
         "subject_policy",
-        "project_profile",
+        "project_guidance",
         "initiative_profile",
         "initiative_policy",
         "task_scope",
@@ -230,9 +233,9 @@ export const ProposalRecord = z.object({
 
 export const ContextSection = z.object({
   kind: z.enum([
-    "global_profile",
+    "global_guidance",
     "subject_profile",
-    "project_profile",
+    "project_guidance",
     "initiative_profile",
     "task_scope",
     "artifact_contract",
@@ -266,7 +269,7 @@ export const ContextPacket = z.object({
 export const HabitSurface = z.object({
   id: z.string(),
   legacy_ids: z.array(z.string()).default([]),
-  scope: ScopeRef,
+  scope: HabitScopeRef,
   kind: z.string(),
   title: z.string(),
   summary: z.string(),
@@ -282,71 +285,137 @@ export const HabitSurface = z.object({
   }),
 })
 
-export const HabitView = HabitSurface.extend({
-  suppressed: z.boolean().default(false),
-  suppress_reason: z.string().optional(),
-})
+export const HabitView = HabitSurface
 
 export const ScratchState = z.enum(["pending", "active", "superseded", "invalidated", "promoted", "discarded"])
 export const ScratchConfidence = z.enum(["low", "medium", "high"])
+export const CandidateState = z.enum(["active", "pending"])
+export const ComparisonRelation = z.enum(["none", "overlap", "conflict"])
+export const ConflictKind = z.enum(["full", "partial"])
+export const EvidenceSource = z.enum(["user_message", "review_input"])
+export const EvidenceRole = z.enum(["user"])
+export const JumpScope = z.enum(["session_local"])
 
 export const ScratchEvidence = z.object({
-  message_id: Identifier.schema("message"),
+  evidence_id: z.string().min(1),
+  session_id: Identifier.schema("session"),
+  message_id: Identifier.schema("message").optional(),
   quote: z.string().min(1),
+  reason: z.string().default(""),
+  source: EvidenceSource.default("user_message"),
+  source_role: EvidenceRole.default("user"),
+  jump_scope: JumpScope.default("session_local"),
+  start_offset: z.number().int().nonnegative().optional(),
+  end_offset: z.number().int().nonnegative().optional(),
+  created_at: z.string(),
+})
+
+export const ExtractedHabitCandidate = z.object({
+  candidate_id: z.string().min(1),
+  summary: z.string().min(1),
+  canonical_text: z.string().min(1),
+  state_suggestion: CandidateState.default("active"),
+  kind: z.string().min(1),
+  impact: PolicyImpact.default("medium"),
+  explicit: z.boolean().default(false),
+  temporary: z.boolean().default(false),
+  confidence: z.number().min(0).max(1).default(0.5),
+  scope_hint: z.string().default("session"),
+  traits: z.array(z.string()).default([]),
+  evidence: z.array(ScratchEvidence).min(1),
+})
+
+const HabitComparisonBase = z.object({
+  relation: ComparisonRelation.default("none"),
+  conflict_kind: ConflictKind.nullable().default(null),
+  comparison_summary: z.string().default(""),
+})
+
+export const ImportedHabitComparison = HabitComparisonBase.extend({
+  habit_id: z.string().min(1),
+  habit_number: z.number().int().positive(),
+})
+
+export const ScratchHabitComparison = HabitComparisonBase.extend({
+  scratch_id: z.string().min(1),
+  scratch_number: z.number().int().positive(),
+  merged_summary: z.string().optional(),
+  merged_canonical_text: z.string().optional(),
+})
+
+export const ImportedHabitHit = z.object({
+  id: z.string().min(1),
+  session_id: Identifier.schema("session"),
+  habit_id: z.string().min(1),
+  candidate_id: z.string().min(1),
+  summary: z.string().min(1),
+  canonical_text: z.string().min(1),
+  evidence: z.array(ScratchEvidence).default([]),
+  comparison_summary: z.string().default(""),
+  created_at: z.string(),
+})
+
+export const ScratchReviewTarget = z.object({
+  target_kind: z.enum(["imported", "scratch"]),
+  target_id: z.string().min(1),
+  target_number: z.number().int().positive(),
+  conflict_kind: ConflictKind.nullable().default(null),
+  comparison_summary: z.string().default(""),
+})
+
+export const ScratchReviewKind = z.enum(["imported_conflict", "scratch_conflict"])
+export const ScratchReviewStatus = z.enum([
+  "pending",
+  "resolved_keep_existing",
+  "resolved_adopt_candidate",
+  "resolved_adopt_custom",
+])
+
+export const ScratchReviewBatch = z.object({
+  id: z.string().min(1),
+  project_id: z.string(),
+  session_id: Identifier.schema("session"),
+  kind: ScratchReviewKind,
+  candidate: ExtractedHabitCandidate,
+  scratch_id: z.string().optional(),
+  targets: z.array(ScratchReviewTarget).default([]),
+  status: ScratchReviewStatus.default("pending"),
+  resolution_note: z.string().optional(),
+  resolution_text: z.string().optional(),
+  resolved_scratch_id: z.string().optional(),
+  created_at: z.string(),
+  updated_at: z.string(),
 })
 
 export const ScratchHabit = z.object({
   id: z.string().min(1),
   project_id: z.string(),
   session_id: Identifier.schema("session"),
+  candidate_id: z.string().optional(),
   state: ScratchState.default("active"),
   kind: z.string().min(1),
   summary: z.string().min(1),
+  canonical_text: z.string().min(1),
   text: z.string().min(1),
   text_norm: z.string().min(1),
   impact: PolicyImpact.default("medium"),
+  explicit: z.boolean().default(false),
+  temporary: z.boolean().default(false),
+  confidence: z.number().min(0).max(1).default(0.5),
+  scope_hint: z.string().default("session"),
+  traits: z.array(z.string()).default([]),
   capture_confidence: ScratchConfidence.default("high"),
   capture_reason: z.string().default("用户明确表达了当前 session 需要遵守的工作习惯。"),
   evidence: z.array(ScratchEvidence).default([]),
   merged_from: z.array(z.string()).default([]),
+  shadow_ids: z.array(z.string()).default([]),
   conflicts: z.array(z.string()).default([]),
+  superseded_by: z.string().optional(),
   note: z.string().optional(),
   promoted_proposal_id: Identifier.schema("proposal").optional(),
   promoted_habit_id: z.string().optional(),
   created_at: z.string(),
   updated_at: z.string(),
-})
-
-export const ScratchConflict = z.object({
-  id: z.string().min(1),
-  project_id: z.string(),
-  session_id: Identifier.schema("session"),
-  habit_id: z.string().min(1),
-  target_kind: z.enum(["scratch", "imported"]),
-  target_id: z.string().min(1),
-  mode: z.enum(["superseded", "shadowed"]),
-  note: z.string().default(""),
-  created_at: z.string(),
-  updated_at: z.string(),
-})
-
-export const ProjectSuppressionRule = z.object({
-  id: z.string().min(1),
-  created_at: z.string(),
-  habit_id: z.string().min(1),
-  scope: ScopeRef,
-  kind: z.string().min(1),
-  text: z.string().min(1),
-  text_norm: z.string().min(1),
-  threshold: z.number().min(0.7).max(1).default(0.82),
-  note: z.string().optional(),
-})
-
-export const ProjectSuppression = z.object({
-  version: z.literal("v1").default("v1"),
-  project_id: z.string(),
-  updated_at: z.string(),
-  rules: z.array(ProjectSuppressionRule).default([]),
 })
 
 export const AdaptationStatusView = z.object({
@@ -371,6 +440,7 @@ export const AdaptationStatusView = z.object({
 })
 
 export type ScopeLevel = z.infer<typeof ScopeLevel>
+export type RuntimeScopeLevel = z.infer<typeof RuntimeScopeLevel>
 export type ScopeRef = z.infer<typeof ScopeRef>
 export type HabitScopeLevel = z.infer<typeof HabitScopeLevel>
 export type HabitScopeRef = z.infer<typeof HabitScopeRef>
@@ -386,9 +456,9 @@ export type PromotionInfo = z.infer<typeof PromotionInfo>
 export type ProposalScopeChoice = z.infer<typeof ProposalScopeChoice>
 export type HabitRelation = z.infer<typeof HabitRelation>
 export type SessionReview = z.infer<typeof SessionReview>
-export type GlobalProfile = z.infer<typeof GlobalProfile>
+export type GlobalGuidance = z.infer<typeof GlobalGuidance>
 export type SubjectProfile = z.infer<typeof SubjectProfile>
-export type ProjectProfile = z.infer<typeof ProjectProfile>
+export type ProjectGuidance = z.infer<typeof ProjectGuidance>
 export type InitiativeProfile = z.infer<typeof InitiativeProfile>
 export type ContextPacket = z.infer<typeof ContextPacket>
 export type ContextSection = z.infer<typeof ContextSection>
@@ -396,8 +466,17 @@ export type HabitSurface = z.infer<typeof HabitSurface>
 export type HabitView = z.infer<typeof HabitView>
 export type ScratchState = z.infer<typeof ScratchState>
 export type ScratchConfidence = z.infer<typeof ScratchConfidence>
+export type CandidateState = z.infer<typeof CandidateState>
+export type ComparisonRelation = z.infer<typeof ComparisonRelation>
+export type ConflictKind = z.infer<typeof ConflictKind>
 export type ScratchHabit = z.infer<typeof ScratchHabit>
-export type ScratchConflict = z.infer<typeof ScratchConflict>
-export type ProjectSuppressionRule = z.infer<typeof ProjectSuppressionRule>
-export type ProjectSuppression = z.infer<typeof ProjectSuppression>
+export type ExtractedHabitCandidate = z.infer<typeof ExtractedHabitCandidate>
+export type ScratchEvidence = z.infer<typeof ScratchEvidence>
+export type ImportedHabitComparison = z.infer<typeof ImportedHabitComparison>
+export type ScratchHabitComparison = z.infer<typeof ScratchHabitComparison>
+export type ImportedHabitHit = z.infer<typeof ImportedHabitHit>
+export type ScratchReviewTarget = z.infer<typeof ScratchReviewTarget>
+export type ScratchReviewKind = z.infer<typeof ScratchReviewKind>
+export type ScratchReviewStatus = z.infer<typeof ScratchReviewStatus>
+export type ScratchReviewBatch = z.infer<typeof ScratchReviewBatch>
 export type AdaptationStatusView = z.infer<typeof AdaptationStatusView>

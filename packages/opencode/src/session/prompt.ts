@@ -175,6 +175,11 @@ export namespace SessionPrompt {
 
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)
+    void Adaptation.extract({
+      session_id: input.sessionID,
+      mode: "after_user_message",
+      message_ids: [message.info.id],
+    }).catch(() => undefined)
 
     // this is backwards compatibility for allowing `tools` to be specified when
     // prompting
@@ -760,12 +765,6 @@ export namespace SessionPrompt {
         }
       }
 
-      if (result === "stop" && !processor.message.error) {
-        void Adaptation.extract({
-          session_id: sessionID,
-          mode: "after_response",
-        }).catch(() => undefined)
-      }
       if (result === "stop") break
       if (result === "compact") {
         await SessionCompaction.create({

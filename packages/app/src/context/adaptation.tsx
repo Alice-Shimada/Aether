@@ -116,8 +116,6 @@ type Habit = {
   summary: string
   impact: "low" | "medium" | "high"
   confidence: number
-  suppressed: boolean
-  suppress_reason?: string
   target_ref: {
     object: string
     path: string
@@ -129,20 +127,34 @@ type Scratch = {
   id: string
   project_id: string
   session_id: string
+  candidate_id?: string
   state: "pending" | "active" | "superseded" | "invalidated" | "promoted" | "discarded"
   kind: string
   summary: string
+  canonical_text: string
   text: string
   text_norm: string
   impact: "low" | "medium" | "high"
+  explicit: boolean
+  temporary: boolean
+  confidence: number
+  scope_hint: string
+  traits: string[]
   capture_confidence: "low" | "medium" | "high"
   capture_reason: string
   evidence: Array<{
-    message_id: string
+    evidence_id: string
+    session_id: string
+    message_id?: string
     quote: string
+    reason: string
+    source: "user_message" | "review_input"
+    created_at: string
   }>
   merged_from: string[]
+  shadow_ids: string[]
   conflicts: string[]
+  superseded_by?: string
   note?: string
   promoted_proposal_id?: string
   promoted_habit_id?: string
@@ -153,17 +165,55 @@ type Scratch = {
   updated_at: string
 }
 
-type ScratchConflict = {
+type ScratchReview = {
   id: string
   project_id: string
   session_id: string
-  habit_id: string
-  target_kind: "scratch" | "imported"
-  target_id: string
-  mode: "superseded" | "shadowed"
-  note: string
+  kind: "imported_conflict" | "scratch_conflict"
+  scratch_id?: string
+  candidate: {
+    candidate_id: string
+    summary: string
+    canonical_text: string
+    state_suggestion: "active" | "pending"
+    kind: string
+    impact: "low" | "medium" | "high"
+    explicit: boolean
+    temporary: boolean
+    confidence: number
+    scope_hint: string
+    traits: string[]
+    evidence: Scratch["evidence"]
+  }
+  targets: Array<{
+    target_kind: "imported" | "scratch"
+    target_id: string
+    target_number: number
+    conflict_kind: "full" | "partial" | null
+    comparison_summary: string
+  }>
+  status:
+    | "pending"
+    | "resolved_keep_existing"
+    | "resolved_adopt_candidate"
+    | "resolved_adopt_custom"
+  resolution_note?: string
+  resolution_text?: string
+  resolved_scratch_id?: string
   created_at: string
   updated_at: string
+}
+
+type ScratchHit = {
+  id: string
+  session_id: string
+  habit_id: string
+  candidate_id: string
+  summary: string
+  canonical_text: string
+  evidence: Scratch["evidence"]
+  comparison_summary: string
+  created_at: string
 }
 
 type ScratchOption = {
@@ -173,13 +223,15 @@ type ScratchOption = {
 
 type OrganizeResult = {
   signals: Array<{ id: string }>
+  candidates?: Array<{ candidate_id: string }>
   summaries: Array<{ id: string }>
   scratch?: {
     created: string[]
     pending: string[]
     merged: string[]
     superseded: string[]
-    shadowed: string[]
+    reviews: string[]
+    hits: string[]
   }
   merged?: {
     created: Proposal[]
@@ -215,7 +267,7 @@ type Context = {
   deferred: () => Proposal[]
   habits: () => Habit[]
   scratch: () => Scratch[]
-  scratchConflicts: () => ScratchConflict[]
+  scratchConflicts: () => ScratchReview[]
   scratchReview: () => Scratch[]
   scratchOptions: () => ScratchOption[]
   loading: () => boolean
@@ -230,8 +282,13 @@ type Context = {
   promoteScratch: (id: string, scope: Scope, session_id?: string, cleanup_duplicates?: boolean) => Promise<void>
   activateScratch: (id: string, session_id?: string) => Promise<void>
   dismissScratch: (id: string, session_id?: string) => Promise<void>
+  resolveScratchReview: (
+    id: string,
+    action: "keep_existing" | "adopt_candidate" | "adopt_custom",
+    text?: string,
+    session_id?: string,
+  ) => Promise<void>
   removeSource: (item: Pick<Habit, "id" | "scope" | "kind">) => Promise<void>
-  suppressProject: (item: Pick<Habit, "id" | "scope" | "kind">, note?: string) => Promise<void>
   getModels: () => Promise<AdaptationModelConfig>
   setModels: (models: Partial<AdaptationModelMap>) => Promise<AdaptationModelConfig | undefined>
 }
@@ -259,7 +316,7 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
   const [deferred, setDeferred] = createSignal<Proposal[]>([])
   const [habits, setHabits] = createSignal<Habit[]>([])
   const [scratch, setScratch] = createSignal<Scratch[]>([])
-  const [scratchConflicts, setScratchConflicts] = createSignal<ScratchConflict[]>([])
+  const [scratchConflicts, setScratchConflicts] = createSignal<ScratchReview[]>([])
   const [scratchReview, setScratchReview] = createSignal<Scratch[]>([])
   const [scratchOptions, setScratchOptions] = createSignal<ScratchOption[]>([])
   const [seen, setSeen] = createSignal({ scratch: 0 })
@@ -310,7 +367,12 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
     const pendingRows = (await pendingRes.json()) as Proposal[]
     const deferredRows = (await deferredRes.json()) as Proposal[]
     const habitRows = (await habitsRes.json()) as Habit[]
-    const scratchRows = (await scratchRes.json()) as { items: Scratch[]; conflicts: ScratchConflict[]; options?: ScratchOption[] }
+    const scratchRows = (await scratchRes.json()) as {
+      items: Scratch[]
+      reviews: ScratchReview[]
+      hits?: ScratchHit[]
+      options?: ScratchOption[]
+    }
     const reviewRows = (await reviewRes.json()) as Scratch[]
     const sessionOpen = (item: Proposal) => {
       if (item.session_review && item.session_review.session_id !== session_id) return false
@@ -346,11 +408,9 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
       uniq(deferredRows.filter(sessionOpen))
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     )
-    setHabits(
-      habitRows.sort((a, b) => Number(a.suppressed) - Number(b.suppressed) || b.impact.localeCompare(a.impact) || a.summary.localeCompare(b.summary)),
-    )
+    setHabits(habitRows.sort((a, b) => b.impact.localeCompare(a.impact) || a.summary.localeCompare(b.summary)))
     setScratch(scratchRows.items.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
-    setScratchConflicts(scratchRows.conflicts.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
+    setScratchConflicts(scratchRows.reviews.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
     setScratchReview(reviewRows.sort((a, b) => b.updated_at.localeCompare(a.updated_at)))
     setScratchOptions((scratchRows.options ?? []).slice())
     const old = seen().scratch
@@ -393,11 +453,22 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
     await refresh()
   }
 
-  const mutateHabit = async (
-    item: Pick<Habit, "id" | "scope" | "kind">,
-    mode: "remove-source" | "suppress-project",
-    note?: string,
+  const resolveScratchReview = async (
+    id: string,
+    action: "keep_existing" | "adopt_candidate" | "adopt_custom",
+    text?: string,
+    session_id?: string,
   ) => {
+    const row = session_id ?? session()
+    if (!row) return
+    await fetchApi(`/adaptation/scratch/reviews/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ session_id: row, action, text }),
+    })
+    await refresh()
+  }
+
+  const mutateHabit = async (item: Pick<Habit, "id" | "scope" | "kind">) => {
     const id = session()
     if (!id) return
     const payload = {
@@ -406,9 +477,8 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
       scope_level: item.scope.level as "initiative" | "task_scope",
       scope_id: item.scope.target,
       kind: item.kind,
-      note,
     }
-    await fetchApi(`/adaptation/habits/${mode}`, {
+    await fetchApi(`/adaptation/habits/remove-source`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
@@ -501,8 +571,8 @@ export const AdaptationProvider: Component<{ children: JSX.Element }> = (props) 
     promoteScratch: async (id, scope, session_id, cleanup_duplicates) => mutateScratch(id, "promote", scope, session_id, cleanup_duplicates),
     activateScratch: async (id, session_id) => mutateScratch(id, "activate", undefined, session_id),
     dismissScratch: async (id, session_id) => mutateScratch(id, "dismiss", undefined, session_id),
-    removeSource: async (item) => mutateHabit(item, "remove-source"),
-    suppressProject: async (item, note) => mutateHabit(item, "suppress-project", note),
+    resolveScratchReview,
+    removeSource: async (item) => mutateHabit(item),
     getModels,
     setModels,
   }

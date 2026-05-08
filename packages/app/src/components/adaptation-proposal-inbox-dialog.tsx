@@ -73,7 +73,7 @@ const labelScope = (value: Scope, hint?: string) => {
   const name = scope(value.level)
   if (value.level === "global") return hint ? `${name}（${hint}）` : name
   if (hint) return `${name}（${hint}）`
-  return `${name}（${value.target}）`
+  return `${name}（系统将在该层级内自动决定目标）`
 }
 
 const note = (level: string, has: boolean) => {
@@ -87,34 +87,36 @@ const note = (level: string, has: boolean) => {
   return "当前可用"
 }
 
-const rows = (items: Scope[]) =>
-  order.flatMap((level) => {
+const rows = (items: Scope[]): Row[] =>
+  order.reduce<Row[]>((out, level) => {
     const same = items.filter((item) => item.level === level)
+    const one = same[0]
     if (same.length === 0) {
-      return [
-        {
-          id: `${level}\t`,
-          level,
-          target: "",
-          disabled: true,
-          note: note(level, false),
-        } satisfies Row,
-      ]
+      out.push({
+        id: `${level}\t`,
+        level,
+        target: "",
+        disabled: true,
+        note: note(level, false),
+      })
+      return out
     }
     if (level === "artifact") {
-      return same.map((item) => ({
-        id: key(item),
-        ...item,
+      out.push({
+        id: key(one!),
+        ...one!,
         disabled: true,
         note: note(level, true),
-      }))
+      })
+      return out
     }
-    return same.map((item) => ({
-      id: key(item),
-      ...item,
+    out.push({
+      id: key(one!),
+      ...one!,
       disabled: false,
-    }))
-  })
+    })
+    return out
+  }, [])
 
 const chosen = (items: Row[], value?: string) => {
   const first = items.find((item) => !item.disabled)?.id ?? "global\tuser"
@@ -156,7 +158,7 @@ export function AdaptationProposalInboxDialog() {
   const [clean, setClean] = createSignal<Record<string, boolean>>({})
   const [tab, setTab] = createSignal<"scratch" | "formal" | "session">("scratch")
 
-  const options = (item: Proposal) => {
+  const options = (item: Proposal): Row[] => {
     const status = adaptation.status()
     const list = [
       suggested(item),
@@ -255,6 +257,7 @@ export function AdaptationProposalInboxDialog() {
                   </Show>
                   <label class="flex flex-col gap-1 text-12-regular text-text-base">
                     入库作用域
+                    <div class="text-11-regular text-text-weak">你只需要选择习惯库五层；系统会在所选层级内自动决定具体目标。</div>
                     <select
                       class="rounded-md border border-border-weak-base bg-background-base px-2 py-1 text-12-regular text-text-strong"
                       value={scratchScope(item)}

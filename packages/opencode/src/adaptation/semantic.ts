@@ -107,10 +107,10 @@ export const semanticMerge = async (input: {
   scope: ScopeRef
   signals: SignalRecord[]
   fresh: Set<string>
-  mode: "manual_current_session" | "after_response" | "after_summary"
+  mode: "manual_current_session" | "after_user_message" | "after_summary"
 }) => {
   if (input.signals.length < 4) return [] as z.infer<typeof row>[]
-  if (input.mode === "after_response" && input.fresh.size < 2) return [] as z.infer<typeof row>[]
+  if (input.mode === "after_user_message" && input.fresh.size < 2) return [] as z.infer<typeof row>[]
   const cfg = await AdaptationModel.get()
   const ref = cfg.models.semantic_merge
   if (!ref) return [] as z.infer<typeof row>[]

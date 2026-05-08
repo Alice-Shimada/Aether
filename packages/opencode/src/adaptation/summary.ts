@@ -19,7 +19,7 @@ type RunInput = {
   initiative_id?: string
   session_ids?: string[]
   signal_ids?: string[]
-  mode?: "manual" | "after_response" | "after_summary"
+  mode?: "manual" | "after_user_message" | "after_summary"
 }
 
 const stateFile = () => safeJoin(indexesRoot(), "signal-state.json")

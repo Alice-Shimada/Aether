@@ -1,7 +1,7 @@
 import { Identifier } from "@/id/id"
 import { TaskScopeRecord } from "./types"
 import { PolicyRecord } from "@/adaptation/types"
-import { ensureProject, getProjectProfile, putProjectProfile } from "@/adaptation/profile"
+import { ensureProject, getProjectGuidance, putProjectGuidance } from "@/adaptation/profile"
 import { syncBinding } from "@/adaptation/session"
 import { bindingFile, ensureDir, nowISO, projectFile, readJSON, taskScopeFile, taskScopeRoot, writeJSON } from "@/adaptation/storage"
 
@@ -65,11 +65,11 @@ export const createScope = async (input: {
   await writeJSON(file(id), scope, "scope")
   await writeJSON(policyFile(id), basePolicy(id), "policy")
 
-  const profile = await getProjectProfile(input.project_id)
-  if (!profile.task_scope_refs.includes(id)) {
-    await putProjectProfile(input.project_id, {
-      ...profile,
-      task_scope_refs: [...profile.task_scope_refs, id],
+  const guidance = await getProjectGuidance(input.project_id)
+  if (!guidance.task_scope_refs.includes(id)) {
+    await putProjectGuidance(input.project_id, {
+      ...guidance,
+      task_scope_refs: [...guidance.task_scope_refs, id],
     })
   }
 
@@ -77,8 +77,8 @@ export const createScope = async (input: {
 }
 
 export const listScopes = async (project_id: string) => {
-  const profile = await getProjectProfile(project_id)
-  const items = Array.from(new Set(profile.task_scope_refs))
+  const guidance = await getProjectGuidance(project_id)
+  const items = Array.from(new Set(guidance.task_scope_refs))
   const rows = await Promise.all(
     items.map(async (id) => {
       const row = await readJSON<TaskScopeRecord | undefined>(file(id), undefined)

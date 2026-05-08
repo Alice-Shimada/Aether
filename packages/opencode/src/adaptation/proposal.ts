@@ -3,15 +3,15 @@ import path from "path"
 import { createHash } from "crypto"
 import { Identifier } from "@/id/id"
 import {
-  GlobalProfile,
+  GlobalGuidance,
   InitiativePolicy,
   InitiativeProfile,
   PolicyRecord,
-  ProjectProfile,
+  ProjectGuidance,
   ProposalRecord,
   ProposalStatus,
+  HabitScopeLevel,
   ScopeRef,
-  ScopeLevel,
   SubjectProfile,
 } from "./types"
 import type { ProposalCandidate } from "./signal"
@@ -19,40 +19,40 @@ import { listSignals } from "./signal"
 import {
   artifactsRoot,
   artifactRoot,
+  bindingsRoot,
   ensureDir,
   initiativeFile,
   initiativesRoot,
   indexesRoot,
   nowISO,
-  projectFile,
   projectsRoot,
   proposalsRoot,
   readJSON,
   safeJoin,
+  sessionFile,
   taskScopesRoot,
   writeJSON,
   remove,
 } from "./storage"
 import {
   getGlobalPolicy,
-  getGlobalProfile,
+  getGlobalGuidance,
   getInitiativePolicy,
   getInitiativeProfile,
-  getProjectProfile,
+  getProjectGuidance,
   getSubjectPolicy,
   getSubjectProfile,
   putGlobalPolicy,
-  putGlobalProfile,
+  putGlobalGuidance,
   putInitiativePolicy,
   putInitiativeProfile,
-  putProjectProfile,
+  putProjectGuidance,
   putSubjectPolicy,
   putSubjectProfile,
 } from "./profile"
 import { scopePolicyFile, scopeProposalRoot, scopeRecordFile } from "@/task-scope/storage"
 import { artifactRecordFile } from "@/artifact/storage"
 import { getBinding, patchBinding, replaceHabitIDs } from "./session"
-import { getProjectSuppression, suppressionHit } from "./habit"
 
 const statusList: ProposalStatus[] = ["pending", "confirmed", "rejected", "deferred"]
 
@@ -86,6 +86,7 @@ const inboxFile = () => safeJoin(indexesRoot(), "proposal-inbox.json")
 const cooldownFile = () => safeJoin(indexesRoot(), "proposal-cooldown.json")
 const scopeProposalDir = (scope_id: string, status: ProposalStatus) => safeJoin(scopeProposalRoot(scope_id), status)
 const artifactProposalDir = (artifact_id: string, status: ProposalStatus) => safeJoin(artifactRoot(artifact_id), "proposals", status)
+const sessionProposalDir = (session_id: string, status: ProposalStatus) => sessionFile(session_id, "proposals", status)
 
 const loadInbox = async () =>
   readJSON<Inbox>(inboxFile(), {
@@ -131,7 +132,7 @@ const scopeDir = async (scope: ScopeRef, status: ProposalStatus, project_id?: st
   if (!project_id) throw new Error("project_id is required for task/artifact/session proposals")
 
   if (scope.level === "session") {
-    const dir = projectFile(project_id, "sessions", scope.target, "proposals", status)
+    const dir = sessionProposalDir(scope.target, status)
     await ensureDir(dir)
     return dir
   }
@@ -168,7 +169,7 @@ const walk = async (dir: string) => {
 }
 
 const listFiles = async () => {
-  const roots = [proposalsRoot(), initiativesRoot(), projectsRoot(), taskScopesRoot(), artifactsRoot()]
+  const roots = [proposalsRoot(), initiativesRoot(), bindingsRoot(), projectsRoot(), taskScopesRoot(), artifactsRoot()]
   const rows = await Promise.all(roots.map((item) => walk(item)))
   return rows
     .flat()
@@ -444,7 +445,7 @@ const chooseScope = (item: ProposalRecord, input: ConfirmInput = {}) => {
     })
   }
 
-  const level = ScopeLevel.parse(selected.level)
+  const level = HabitScopeLevel.parse(selected.level)
   if (!["global", "subject", "initiative", "task_scope"].includes(level)) {
     throw new Error(`unsupported proposal scope choice: ${level}`)
   }
@@ -493,9 +494,9 @@ const patchTarget = async (item: ProposalRecord) => {
   const patch = item.target_patch
   if (!patch) return
 
-  if (patch.object === "global_profile") {
-    const row = await getGlobalProfile()
-    await putGlobalProfile(GlobalProfile.parse(mergeValue(row as unknown as Record<string, unknown>, patch.payload)))
+  if (patch.object === "global_guidance") {
+    const row = await getGlobalGuidance()
+    await putGlobalGuidance(GlobalGuidance.parse(mergeValue(row as unknown as Record<string, unknown>, patch.payload)))
     return
   }
 
@@ -523,11 +524,11 @@ const patchTarget = async (item: ProposalRecord) => {
     return
   }
 
-  if (patch.object === "project_profile") {
-    const row = await getProjectProfile(patch.id)
-    await putProjectProfile(
+  if (patch.object === "project_guidance") {
+    const row = await getProjectGuidance(patch.id)
+    await putProjectGuidance(
       patch.id,
-      ProjectProfile.parse(mergeValue(row as unknown as Record<string, unknown>, patch.payload)),
+      ProjectGuidance.parse(mergeValue(row as unknown as Record<string, unknown>, patch.payload)),
     )
     return
   }
@@ -606,8 +607,6 @@ const applySessionReview = async (item: ProposalRecord) => {
 export const mergeProposals = async (candidates: ProposalCandidate[]) => {
   const list = await listProposals(["pending", "deferred"])
   const cool = await loadCooldown()
-  const suppression = new Map<string, NonNullable<Awaited<ReturnType<typeof getProjectSuppression>>["rules"]>>()
-
   const now = Date.now()
   const created: ProposalRecord[] = []
   const merged: ProposalRecord[] = []
@@ -626,22 +625,6 @@ export const mergeProposals = async (candidates: ProposalCandidate[]) => {
   }
 
   for (const cand of candidates) {
-    if (cand.project_id && (cand.scope.level === "initiative" || cand.scope.level === "task_scope")) {
-      let rules = suppression.get(cand.project_id)
-      if (!rules) {
-        const row = await getProjectSuppression(cand.project_id)
-        rules = row.rules ?? []
-        suppression.set(cand.project_id, rules)
-      }
-      const gate = suppressionHit({
-        rules: rules ?? [],
-        text: text(cand),
-      })
-      if (gate.hit) {
-        skipped.push({ reason: "project_suppressed", merge_key: cand.merge_key })
-        continue
-      }
-    }
     const until = cool.keys[cand.merge_key]
     if (until && new Date(until).getTime() > now) {
       skipped.push({ reason: "cooldown", merge_key: cand.merge_key })

@@ -102,7 +102,7 @@ import type {
   GetAdaptationHabitsResponses,
   GetAdaptationInitiativesIdPolicyResponses,
   GetAdaptationInitiativesIdProfileResponses,
-  GetAdaptationProjectsIdProfileResponses,
+  GetAdaptationProjectsIdGuidanceResponses,
   GetAdaptationPromotionsResponses,
   GetAdaptationProposalsIdResponses,
   GetAdaptationProposalsResponses,
@@ -215,7 +215,6 @@ import type {
   PermissionRespondResponses,
   PermissionRuleset,
   PostAdaptationHabitsRemoveSourceResponses,
-  PostAdaptationHabitsSuppressProjectResponses,
   PostAdaptationProposalsIdConfirmResponses,
   PostAdaptationProposalsIdDeferResponses,
   PostAdaptationProposalsIdRejectResponses,
@@ -223,6 +222,7 @@ import type {
   PostAdaptationScratchIdActivateResponses,
   PostAdaptationScratchIdDismissResponses,
   PostAdaptationScratchIdPromoteResponses,
+  PostAdaptationScratchReviewsIdResolveResponses,
   PostAdaptationSignalsExtractResponses,
   PostAdaptationSummariesRunResponses,
   PostArtifactMatchResponses,
@@ -7660,7 +7660,7 @@ export class OpencodeClient extends HeyApiClient {
     })
   }
 
-  public getAdaptationProjectsIdProfile<ThrowOnError extends boolean = false>(
+  public getAdaptationProjectsIdGuidance<ThrowOnError extends boolean = false>(
     parameters: {
       id: string
       directory?: string
@@ -7680,8 +7680,8 @@ export class OpencodeClient extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<GetAdaptationProjectsIdProfileResponses, unknown, ThrowOnError>({
-      url: "/adaptation/projects/{id}/profile",
+    return (options?.client ?? this.client).get<GetAdaptationProjectsIdGuidanceResponses, unknown, ThrowOnError>({
+      url: "/adaptation/projects/{id}/guidance",
       ...options,
       ...params,
     })
@@ -7692,7 +7692,7 @@ export class OpencodeClient extends HeyApiClient {
       directory?: string
       workspace?: string
       session_id?: string
-      mode?: "manual_current_session" | "after_response" | "after_summary"
+      mode?: "manual_current_session" | "after_user_message" | "after_summary"
       message_ids?: Array<string>
     },
     options?: Options<never, ThrowOnError>,
@@ -7929,6 +7929,46 @@ export class OpencodeClient extends HeyApiClient {
     })
   }
 
+  public postAdaptationScratchReviewsIdResolve<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      workspace?: string
+      session_id?: string
+      action?: "keep_existing" | "adopt_candidate" | "adopt_custom"
+      text?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "session_id" },
+            { in: "body", key: "action" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PostAdaptationScratchReviewsIdResolveResponses, unknown, ThrowOnError>(
+      {
+        url: "/adaptation/scratch/reviews/{id}/resolve",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
   public getAdaptationScratchReview<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
@@ -8095,48 +8135,6 @@ export class OpencodeClient extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<PostAdaptationHabitsRemoveSourceResponses, unknown, ThrowOnError>({
       url: "/adaptation/habits/remove-source",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public postAdaptationHabitsSuppressProject<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      workspace?: string
-      session_id?: string
-      habit_id?: string
-      scope_level?: "initiative" | "task_scope"
-      scope_id?: string
-      kind?: "initiative_policy" | "task_scope" | "task_scope_policy"
-      note?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "workspace" },
-            { in: "body", key: "session_id" },
-            { in: "body", key: "habit_id" },
-            { in: "body", key: "scope_level" },
-            { in: "body", key: "scope_id" },
-            { in: "body", key: "kind" },
-            { in: "body", key: "note" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PostAdaptationHabitsSuppressProjectResponses, unknown, ThrowOnError>({
-      url: "/adaptation/habits/suppress-project",
       ...options,
       ...params,
       headers: {

@@ -3,7 +3,7 @@ import { Identifier } from "@/id/id"
 import { MemoryPath } from "@/memory/path"
 import { Instance } from "@/project/instance"
 import { ArtifactContract, ArtifactMatchInput, ArtifactMatchResult } from "./types"
-import { ensureProject, getProjectProfile, putProjectProfile } from "@/adaptation/profile"
+import { ensureProject, getProjectGuidance, putProjectGuidance } from "@/adaptation/profile"
 import { artifactFile, artifactRoot, ensureDir, nowISO, projectFile, readJSON, writeJSON } from "@/adaptation/storage"
 
 const file = (artifact_id: string) => artifactFile(artifact_id, "contract.json")
@@ -55,11 +55,11 @@ export const createArtifact = async (input: {
 
   await writeJSON(file(item.id), item, "artifact")
 
-  const profile = await getProjectProfile(input.project_id)
-  if (!profile.artifact_refs.includes(item.id)) {
-    await putProjectProfile(input.project_id, {
-      ...profile,
-      artifact_refs: [...profile.artifact_refs, item.id],
+  const guidance = await getProjectGuidance(input.project_id)
+  if (!guidance.artifact_refs.includes(item.id)) {
+    await putProjectGuidance(input.project_id, {
+      ...guidance,
+      artifact_refs: [...guidance.artifact_refs, item.id],
     })
   }
 
@@ -67,8 +67,8 @@ export const createArtifact = async (input: {
 }
 
 export const listArtifacts = async (project_id: string) => {
-  const profile = await getProjectProfile(project_id)
-  const files = Array.from(new Set(profile.artifact_refs))
+  const guidance = await getProjectGuidance(project_id)
+  const files = Array.from(new Set(guidance.artifact_refs))
   const items = await Promise.all(
     files.map(async (id) => {
       const item = await readJSON<ArtifactContract | undefined>(file(id), undefined)

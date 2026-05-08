@@ -13,7 +13,7 @@ export const renderPacket = (packet: ContextPacket) => {
     packet.audit.omitted_reason.slice(0, 3).forEach((item) => out.push(`  - ${item}`))
   }
 
-  out.push("- rule: current user message and repo/system instructions always override adaptation policy.")
+  out.push("- rule: current user message and repo/system instructions always override imported habits, scratch habits, and adaptation policy.")
   return out.join("\n")
 }
 

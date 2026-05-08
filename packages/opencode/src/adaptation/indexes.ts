@@ -3,7 +3,7 @@ import { createHash } from "crypto"
 import {
   getGlobalPolicy,
   getInitiativePolicy,
-  getProjectProfile,
+  getProjectGuidance,
   listSubjects,
   getSubjectPolicy,
   getSubjectProfile,
@@ -135,7 +135,7 @@ export const rebuildIndexes = async () => {
         scope: { level: "global", target: "user" },
         text: line.text,
         object: "global_policy",
-        path: "global/user/global-policy.json",
+        path: "global/global-policy.json",
         triggers: [],
         impact: line.impact,
       }),
@@ -143,18 +143,18 @@ export const rebuildIndexes = async () => {
   })
 
   for (const project_id of projects) {
-    const [profile, scopes, arts] = await Promise.all([
-      getProjectProfile(project_id),
+    const [guidance, scopes, arts] = await Promise.all([
+      getProjectGuidance(project_id),
       listScopes(project_id),
       listArtifacts(project_id),
     ])
 
-    profile.subject_ids.forEach((id) => subject_ids.add(id))
+    guidance.subject_ids.forEach((id) => subject_ids.add(id))
 
     scope_map[project_id] = {
       task_scope_ids: scopes.map((item) => item.id),
       artifact_ids: arts.map((item) => item.id),
-      subject_ids: profile.subject_ids,
+      subject_ids: guidance.subject_ids,
     }
 
     task_scope_index[project_id] = taskIndex(scopes, arts)
@@ -210,7 +210,7 @@ export const rebuildIndexes = async () => {
 
     const rows = Array.from(uniq.values())
 
-    // Batch classify all habits via LLM (with regex fallback)
+    // Batch classify all habits via LLM; unclassified rows keep safe defaults.
     const classified = await classifyHabits(rows.map((item) => ({ id: item.id, text: item.text })))
 
     rows.forEach((item) => {

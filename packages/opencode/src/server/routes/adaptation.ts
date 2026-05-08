@@ -143,7 +143,7 @@ export const AdaptationRoutes = lazy(() =>
         return c.json(row)
       },
     )
-    .get("/global/profile", async (c) => c.json(await Adaptation.globalProfile()))
+    .get("/global/guidance", async (c) => c.json(await Adaptation.globalGuidance()))
     .get("/global/policy", async (c) => c.json(await Adaptation.globalPolicy()))
     .get("/subjects", async (c) => c.json(await Adaptation.subjects()))
     .get(
@@ -167,9 +167,9 @@ export const AdaptationRoutes = lazy(() =>
       async (c) => c.json(await Adaptation.initiativePolicy(c.req.valid("param").id)),
     )
     .get(
-      "/projects/:id/profile",
+      "/projects/:id/guidance",
       validator("param", z.object({ id: z.string().min(1) })),
-      async (c) => c.json(await Adaptation.projectProfile(c.req.valid("param").id)),
+      async (c) => c.json(await Adaptation.projectGuidance(c.req.valid("param").id)),
     )
     .post(
       "/signals/extract",
@@ -177,7 +177,7 @@ export const AdaptationRoutes = lazy(() =>
         "json",
         z.object({
           session_id: Identifier.schema("session"),
-          mode: z.enum(["manual_current_session", "after_response", "after_summary"]),
+          mode: z.enum(["manual_current_session", "after_user_message", "after_summary"]),
           message_ids: z.array(Identifier.schema("message")).optional(),
         }),
       ),
@@ -263,6 +263,35 @@ export const AdaptationRoutes = lazy(() =>
         }),
       ),
       async (c) => c.json(await Adaptation.scratch(c.req.valid("query").session_id)),
+    )
+    .post(
+      "/scratch/reviews/:id/resolve",
+      validator(
+        "param",
+        z.object({
+          id: z.string().min(1),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          session_id: Identifier.schema("session"),
+          action: z.enum(["keep_existing", "adopt_candidate", "adopt_custom"]),
+          text: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const param = c.req.valid("param")
+        const body = c.req.valid("json")
+        return c.json(
+          await Adaptation.resolveScratchReview({
+            session_id: body.session_id,
+            id: param.id,
+            action: body.action,
+            text: body.text,
+          }),
+        )
+      },
     )
     .get(
       "/scratch/review",
@@ -371,24 +400,6 @@ export const AdaptationRoutes = lazy(() =>
       async (c) => {
         const body = c.req.valid("json")
         return c.json(await Adaptation.removeHabit(body))
-      },
-    )
-    .post(
-      "/habits/suppress-project",
-      validator(
-        "json",
-        z.object({
-          session_id: Identifier.schema("session"),
-          habit_id: z.string().min(1),
-          scope_level: HabitScope,
-          scope_id: z.string().min(1),
-          kind: HabitKind,
-          note: z.string().optional(),
-        }),
-      ),
-      async (c) => {
-        const body = c.req.valid("json")
-        return c.json(await Adaptation.suppressHabit(body))
       },
     )
     .post(

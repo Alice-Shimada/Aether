@@ -44,15 +44,10 @@ export function AdaptationCurrentContextDialog() {
   const [busy, setBusy] = createSignal("")
 
   const packet = createMemo(() => adaptation.status()?.context_packet)
-  const habits = createMemo(() => new Set(packet()?.habit_ids ?? []))
+  const habits = createMemo(() => new Set(packet()?.habit_ids ?? adaptation.status()?.habit_ids ?? []))
   const scratch = createMemo(() => new Set(packet()?.scratch_ids ?? []))
 
-  const imported = createMemo(() => {
-    if (packet()) {
-      return adaptation.habits().filter((item) => habits().has(item.id) && !item.suppressed)
-    }
-    return adaptation.habits().filter((item) => !item.suppressed)
-  })
+  const imported = createMemo(() => adaptation.habits().filter((item) => habits().has(item.id)))
 
   const activeScratch = createMemo(() => {
     if (packet()) {
@@ -73,11 +68,6 @@ export function AdaptationCurrentContextDialog() {
   const sourceRemove = async (input: ManagedHabit) => {
     setBusy(`remove:${input.id}:${input.scope.target}`)
     await adaptation.removeSource(input).finally(() => setBusy(""))
-  }
-
-  const projectSuppress = async (input: ManagedHabit) => {
-    setBusy(`suppress:${input.id}:${input.scope.target}`)
-    await adaptation.suppressProject(input).finally(() => setBusy(""))
   }
 
   return (
@@ -105,14 +95,6 @@ export function AdaptationCurrentContextDialog() {
                           <div class="flex items-center gap-2 pt-1">
                             <Button size="small" variant="ghost" disabled={busy() !== ""} onClick={() => void sourceRemove(row())}>
                               从真源移除
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="ghost"
-                              disabled={busy() !== ""}
-                              onClick={() => void projectSuppress(row())}
-                            >
-                              仅本项目禁用
                             </Button>
                           </div>
                         )}

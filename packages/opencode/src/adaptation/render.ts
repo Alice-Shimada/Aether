@@ -48,7 +48,7 @@ const header = (title: string, scope: string, value: unknown, pending?: boolean)
 
 export const renderMirror = (kind: string, value: unknown) => {
   const row = (value && typeof value === "object" ? (value as Record<string, unknown>) : {}) as Record<string, unknown>
-  if (kind === "global-profile") {
+  if (kind === "global-guidance") {
     return [
       header("Global Guidance", "workspace-global", value, false),
       section("Summary", row.summary),
@@ -84,7 +84,7 @@ export const renderMirror = (kind: string, value: unknown) => {
       section("Operation Policy", row.operation_policy),
     ].join("\n")
   }
-  if (kind === "project-profile") {
+  if (kind === "project-guidance") {
     return [
       header("Project Guidance", `project:${String(row.project_id ?? "")}`, value, false),
       section("Summary", row.summary),
@@ -111,12 +111,6 @@ export const renderMirror = (kind: string, value: unknown) => {
       header("Initiative Policy", `initiative:${String(row.initiative_id ?? "")}`, value, false),
       section("Response Policy", row.response_policy),
       section("Operation Policy", row.operation_policy),
-    ].join("\n")
-  }
-  if (kind === "project-suppression") {
-    return [
-      header("Project Suppression", `project:${String(row.project_id ?? "")}`, value, false),
-      section("Rules", row.rules),
     ].join("\n")
   }
   if (kind === "scope") {

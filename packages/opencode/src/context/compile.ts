@@ -7,17 +7,17 @@ import { ensureMap } from "@/adaptation/project"
 import { getBinding, syncBinding } from "@/adaptation/session"
 import {
   getGlobalPolicy,
-  getGlobalProfile,
+  getGlobalGuidance,
   getInitiativePolicy,
   getInitiativeProfile,
-  getProjectProfile,
+  getProjectGuidance,
   getSubjectPolicy,
   getSubjectProfile,
 } from "@/adaptation/profile"
 import { listProposals, mergeProposals } from "@/adaptation/proposal"
 import { contextPacketFile, nowISO, writeJSON, readJSON } from "@/adaptation/storage"
 import { mergePolicy } from "@/adaptation/policy"
-import { getProjectSuppression, listProjectHabits, suppressionHit } from "@/adaptation/habit"
+import { listProjectHabits } from "@/adaptation/habit"
 import type { ProposalCandidate } from "@/adaptation/signal"
 import { activeScratch } from "@/adaptation/scratch"
 import { clipSections } from "./priority"
@@ -92,18 +92,6 @@ const terms = (text: string) =>
     .filter((item) => item.length > 1)
 
 const norm = (text: string) => terms(text).join(" ")
-const neg = (text: string) => /不要|不用|别用|禁止|避免|do not|don't|avoid|no longer/iu.test(text)
-const overlap = (a: string, b: string) => {
-  const x = new Set(terms(a).filter((item) => !["默认", "以后", "请", "用", "不要", "不用", "别用"].includes(item)))
-  const y = new Set(terms(b).filter((item) => !["默认", "以后", "请", "用", "不要", "不用", "别用"].includes(item)))
-  if (x.size === 0 || y.size === 0) return 0
-  let hit = 0
-  x.forEach((item) => {
-    if (y.has(item)) hit += 1
-  })
-  return hit / Math.max(1, Math.min(x.size, y.size))
-}
-const shadow = (scratch: string, habit: Habit) => neg(scratch) !== neg(`${habit.title} ${habit.summary}`) && overlap(scratch, `${habit.title} ${habit.summary} ${habit.triggers.join(" ")}`) >= 0.45
 
 const related = (item: Habit, text: string) => {
   const raw = text.toLowerCase().normalize("NFKC")
@@ -178,7 +166,6 @@ export const buildSessionReviewCandidates = (input: {
   const out = new Map<string, ProposalCandidate>()
 
   input.matched
-    .filter((item) => !item.suppressed)
     .filter((item) => !bound.has(item.id) && !item.legacy_ids.some((id) => bound.has(id)))
     .forEach((item) => {
       const row = reviewCandidate({
@@ -190,23 +177,6 @@ export const buildSessionReviewCandidates = (input: {
         impact: item.impact,
         confidence: Math.max(0.72, item.confidence || 0),
         reason: "本轮请求命中了这条已确认习惯，但它尚未进入当前 session。",
-        habit_scope: item.scope,
-      })
-      out.set(row.merge_key, row)
-    })
-
-  input.current
-    .filter((item) => item.suppressed)
-    .forEach((item) => {
-      const row = reviewCandidate({
-        session_id: input.session_id,
-        project_id: input.project_id,
-        mode: "suggest_remove",
-        habit_id: item.id,
-        summary: item.summary,
-        impact: item.impact,
-        confidence: 0.9,
-        reason: `这条习惯当前已被本项目 suppression 命中${item.suppress_reason ? `（${item.suppress_reason}）` : ""}，建议从当前 session 移出。`,
         habit_scope: item.scope,
       })
       out.set(row.merge_key, row)
@@ -257,23 +227,22 @@ export const compileContext = async (input: CompileInput) => {
   const subject_ids = Array.from(new Set([...bind.subject_ids, ...match.subject_ids])).slice(0, 4)
   const artifact_ids = Array.from(new Set([...bind.artifact_ids, ...match.artifact_ids])).slice(0, 4)
 
-  const [projectProfile, initiativeProfile, initiativePolicy, globalProfile, globalPolicy, task, arts, pending, suppression] = await Promise.all([
-    getProjectProfile(project_id),
+  const [projectGuidance, initiativeProfile, initiativePolicy, globalGuidance, globalPolicy, task, arts, pending] = await Promise.all([
+    getProjectGuidance(project_id),
     initiative_id ? getInitiativeProfile(initiative_id) : Promise.resolve(undefined),
     initiative_id ? getInitiativePolicy(initiative_id) : Promise.resolve(undefined),
-    getGlobalProfile(),
+    getGlobalGuidance(),
     getGlobalPolicy(),
     task_scope_id ? TaskScope.get(project_id, task_scope_id) : Promise.resolve(undefined),
     Promise.all(artifact_ids.map((item) => Artifact.get(project_id, item))),
     listProposals(["pending"]),
-    getProjectSuppression(project_id),
   ])
 
   const guide_subject_ids =
     subject_ids.length > 0
       ? subject_ids
-      : Array.from(new Set([...projectProfile.subject_ids, ...globalProfile.subject_ids])).slice(0, 4)
-  const guide_task_scope_refs = Array.from(new Set([...projectProfile.task_scope_refs, ...globalProfile.task_scope_refs]))
+      : Array.from(new Set([...projectGuidance.subject_ids, ...globalGuidance.subject_ids])).slice(0, 4)
+  const guide_task_scope_refs = Array.from(new Set([...projectGuidance.task_scope_refs, ...globalGuidance.task_scope_refs]))
   const guide_task_scope_id = task_scope_id ?? (guide_task_scope_refs.length === 1 ? guide_task_scope_refs[0] : undefined)
 
   const subjects = await Promise.all(
@@ -331,6 +300,7 @@ export const compileContext = async (input: CompileInput) => {
   )
   const omitted: string[] = []
   const scratch = await activeScratch(input.session_id)
+  const shadowed = new Set(scratch.flatMap((row) => row.shadow_ids))
   const currentImported = await listProjectHabits(project_id, {
     initiative_id,
     task_scope_id: guide_task_scope_id,
@@ -338,14 +308,16 @@ export const compileContext = async (input: CompileInput) => {
     current: true,
     habit_ids: bind.habit_ids,
   })
-  const currentHabits = currentImported.filter((item) => !scratch.some((row) => shadow(row.text, item)))
+  const currentHabits = currentImported.filter((item) => !shadowed.has(item.id))
   scratch
-    .flatMap((row) =>
-      currentImported
-        .filter((item) => shadow(row.text, item))
-        .map((item) => `${item.summary} omitted by current session scratch ${row.id}`),
+    .filter((row) => row.shadow_ids.length > 0)
+    .forEach((row) =>
+      row.shadow_ids
+        .map((id) => currentImported.find((item) => item.id === id))
+        .filter((item): item is Habit => Boolean(item))
+        .map((item) => `${item.summary} omitted by current session scratch ${row.id}`)
+        .forEach((item) => omitted.push(item)),
     )
-    .forEach((item) => omitted.push(item))
   const review = buildSessionReviewCandidates({
     session_id: input.session_id,
     project_id,
@@ -356,24 +328,13 @@ export const compileContext = async (input: CompileInput) => {
   if (review.length > 0) await mergeProposals(review)
 
   const applies = (level: "global" | "initiative", text: string) =>
-    currentHabits.some((item) => !item.suppressed && item.scope.level === level && norm(item.summary) === norm(text))
-  const keep = (text: string, src: string) => {
-    const gate = suppressionHit({
-      rules: suppression.rules,
-      text,
-    })
-    if (!gate.hit) return true
-    omitted.push(`${src} omitted by project suppression`)
-    return false
-  }
+    currentHabits.some((item) => item.scope.level === level && norm(item.summary) === norm(text))
 
   const initiativePolicyFiltered = initiativePolicy
     ? {
         ...initiativePolicy,
-        response_policy: initiativePolicy.response_policy.filter((item) => keep(item.text, "initiative policy")),
-        operation_policy: initiativePolicy.operation_policy
-          .filter((item) => applies("initiative", item.text))
-          .filter((item) => keep(item.text, "initiative policy")),
+        response_policy: initiativePolicy.response_policy,
+        operation_policy: initiativePolicy.operation_policy.filter((item) => applies("initiative", item.text)),
       }
     : undefined
 
@@ -387,7 +348,7 @@ export const compileContext = async (input: CompileInput) => {
     ? {
         ...subjectPolicy,
         operation_policy: subjectPolicy.operation_policy.filter((item) =>
-          currentHabits.some((row) => !row.suppressed && row.scope.level === "subject" && norm(row.summary) === norm(item.text)),
+          currentHabits.some((row) => row.scope.level === "subject" && norm(row.summary) === norm(item.text)),
         ),
       }
     : undefined
@@ -395,15 +356,15 @@ export const compileContext = async (input: CompileInput) => {
   const taskPolicyFiltered = task?.policy
     ? {
         ...task.policy,
-        response_policy: task.policy.response_policy.filter((item) => keep(item.text, "task scope policy")),
-        operation_policy: task.policy.operation_policy.filter((item) => keep(item.text, "task scope policy")),
+        response_policy: task.policy.response_policy,
+        operation_policy: task.policy.operation_policy,
       }
     : undefined
 
   const taskScopeFiltered = task?.scope
     ? {
         ...task.scope,
-        principles: task.scope.principles.filter((item) => keep(item, "task scope principles")),
+        principles: task.scope.principles,
       }
     : undefined
 
@@ -427,7 +388,7 @@ export const compileContext = async (input: CompileInput) => {
 
   const sections: ContextSection[] = []
 
-  sections.push(section("project_profile", "project_profile", project_id, toText(projectProfile)))
+  sections.push(section("project_guidance", "project_guidance", project_id, toText(projectGuidance)))
   if (initiative_id && initiativeProfile) {
     sections.push(section("initiative_profile", "initiative_profile", initiative_id, toText(initiativeProfile)))
   }
@@ -442,7 +403,7 @@ export const compileContext = async (input: CompileInput) => {
         [
           `scope=${item.scope.level}:${item.scope.target}`,
           `type=${item.kind}`,
-          `status=${item.suppressed ? "suppressed" : "active"}`,
+          "status=active",
           item.summary,
         ].join("; "),
       ),
@@ -471,9 +432,9 @@ export const compileContext = async (input: CompileInput) => {
     sections.push(section("artifact_contract", "artifact_contract", row.id, `${row.role}: ${row.path}`))
   }
 
-  const global = toText(globalProfile)
+  const global = toText(globalGuidance)
   if (global) {
-    sections.push(section("global_profile", "global_profile", "workspace-global", global))
+    sections.push(section("global_guidance", "global_guidance", "workspace-global", global))
   }
 
   merged.response.slice(0, 6).forEach((item) => {
@@ -518,9 +479,9 @@ export const compileContext = async (input: CompileInput) => {
     sections: clip,
     audit: {
       used_records: [
-        "global-profile.json",
-        "global-policy.json",
-        "project-profile.json",
+        "workspace/global-guidance.json",
+        "global/global-policy.json",
+        `workspace/projects/${project_id}/project-guidance.json`,
         ...(initiative_id ? [`initiatives/${initiative_id}/initiative-profile.json`, `initiatives/${initiative_id}/initiative-policy.json`] : []),
         ...guide_subject_ids.map((id) => `subjects/${id}/profile.json`),
         ...guide_subject_ids.map((id) => `subjects/${id}/policy.json`),

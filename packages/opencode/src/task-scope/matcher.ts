@@ -4,7 +4,7 @@ import { ensureMap } from "@/adaptation/project"
 import { getBinding, syncBinding } from "@/adaptation/session"
 import { listScopes } from "./storage"
 import { listArtifacts } from "@/artifact/storage"
-import { getGlobalProfile, getProjectProfile } from "@/adaptation/profile"
+import { getGlobalGuidance, getProjectGuidance } from "@/adaptation/profile"
 import { rerankScopes } from "./rerank"
 
 const words = (text: string) =>
@@ -52,11 +52,11 @@ export const matchScope = async (input: ScopeMatchInput) => {
   const bind = await getBinding(input.session_id)
   const project_id = map.project_id
 
-  const [scopes, arts, profile, global] = await Promise.all([
+  const [scopes, arts, guidance, global] = await Promise.all([
     listScopes(project_id),
     listArtifacts(project_id),
-    getProjectProfile(project_id),
-    getGlobalProfile(),
+    getProjectGuidance(project_id),
+    getGlobalGuidance(),
   ])
 
   // Try LLM reranking first, fallback to bag-of-words
@@ -100,7 +100,7 @@ export const matchScope = async (input: ScopeMatchInput) => {
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
 
-  const subject_ids = Array.from(new Set([...profile.subject_ids, ...global.subject_ids]))
+  const subject_ids = Array.from(new Set([...guidance.subject_ids, ...global.subject_ids]))
     .filter((item) => input.request.toLowerCase().includes(item.toLowerCase()))
     .slice(0, 3)
 
